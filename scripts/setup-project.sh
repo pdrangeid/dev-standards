@@ -264,7 +264,6 @@ fi
 
 # develop branch
 echo "🌿 Setting up 'develop' branch..."
-run git checkout -b develop 2>/dev/null || run git checkout develop
 
 # Check remote reachability by attempting a fetch (more reliable than ls-remote after clone)
 REMOTE_REACHABLE=false
@@ -273,17 +272,33 @@ if [ "$DRY_RUN" = false ] && git fetch origin &>/dev/null; then
 fi
 
 if [ "$REMOTE_REACHABLE" = true ]; then
-    git push -u origin develop
-    echo "✅ Pushed 'develop' to remote."
+    if git ls-remote --exit-code --heads origin develop &>/dev/null; then
+        # Remote develop already exists — track it instead of pushing
+        git checkout -b develop origin/develop 2>/dev/null || git checkout develop
+        git branch --set-upstream-to=origin/develop develop 2>/dev/null || true
+        echo "✅ Tracking existing remote 'develop' branch."
+    else
+        # Doesn't exist yet — create and push
+        git checkout -b develop 2>/dev/null || git checkout develop
+        git push -u origin develop
+        echo "✅ Pushed new 'develop' branch to remote."
+    fi
 else
+    run git checkout -b develop 2>/dev/null || run git checkout develop
     echo "⚠️  Remote not reachable yet — push manually after creating the GitHub repo."
 fi
 
 # Optional feature branch
 if [ -n "$FEATURE_BRANCH" ]; then
-    echo "🌿 Creating feature branch: feature/$FEATURE_BRANCH"
-    run git checkout -b "feature/$FEATURE_BRANCH"
-    echo "✅ Now on feature/$FEATURE_BRANCH"
+    if [[ "$FEATURE_BRANCH" == "main" || "$FEATURE_BRANCH" == "develop" || "$FEATURE_BRANCH" == "master" ]]; then
+        echo "⚠️  '$FEATURE_BRANCH' is a reserved branch name — ignoring --feature flag."
+        echo "    You are already on 'develop'. Use --feature <descriptive-name> for feature branches."
+        FEATURE_BRANCH=""
+    else
+        echo "🌿 Creating feature branch: feature/$FEATURE_BRANCH"
+        run git checkout -b "feature/$FEATURE_BRANCH"
+        echo "✅ Now on feature/$FEATURE_BRANCH"
+    fi
 fi
 echo ""
 
