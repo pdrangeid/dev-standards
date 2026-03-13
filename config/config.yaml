@@ -1,0 +1,11 @@
+# dev-standards configuration
+
+paths:
+  output_dir: output
+  # input_dir: input
+
+defaults:
+  # Add project-specific defaults here
+
+output_mode:
+  use_profile_subfolders: false
