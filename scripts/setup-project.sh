@@ -602,7 +602,9 @@ echo "✅ .gitignore created"
 
 # claude.md — fetch base + modules from dev-standards, append Project-Specific stub
 echo "Generating claude.md..."
-DEV_STANDARDS_RAW="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
+DEV_STANDARDS_RAW_MAIN="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
+DEV_STANDARDS_RAW_DEV="https://raw.githubusercontent.com/pdrangeid/dev-standards/develop/claude"
+DEV_STANDARDS_RAW="$DEV_STANDARDS_RAW_DEV"  # default to develop branch for latest updates
 CLAUDE_MD="$PROJECT_DIR/claude.md"
 FETCH_FAILED=false
 

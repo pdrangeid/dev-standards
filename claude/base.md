@@ -165,7 +165,8 @@ When a user signals they're done for the session (e.g. "ok that's good for now",
 
 1. Were any docs updated to match what was built? If not, offer to do it now.
 2. Are there any known bugs or deferred decisions worth logging to a Lesson node?
-3. Is there anything that should be committed that hasn't been?
+3. Have we added any modules that should be added to requirements.txt or requirements-dev.txt or pyproject.toml
+4. Is there anything that should be committed that hasn't been?
 
 Keep this lightweight — one short prompt, not an interrogation.
 
