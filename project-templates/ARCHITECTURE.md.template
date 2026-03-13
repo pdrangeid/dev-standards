@@ -1,0 +1,77 @@
+# Architecture: {{PROJECT_NAME}}
+
+> **TODO**: Fill in architecture details as the project takes shape.
+> This template follows the dev-standards documentation convention.
+
+## Overview
+
+_Describe the high-level purpose and design philosophy here._
+
+This project is part of the **Manifest-First, graph-generation pipeline** ecosystem.
+[Describe where this tool fits: analyzer, exporter, connector, etc.]
+
+## Design Principles
+
+- **Connectionless** _(or: Live connection only in X)_ — [explain]
+- **File-in / file-out** — inputs and outputs are files, not database state
+- **Manifest as contract** — the JSON manifest is the boundary between ingestion and export
+
+## Data Flow
+
+```
+[Input: describe source]
+    ↓
+[Processing: describe what happens]
+    ↓
+[Output: describe output format]
+```
+
+## Component Specifications
+
+| Component | Responsibility | Key Logic |
+|:---|:---|:---|
+| `main.py` | CLI entry point (typer) | Argument parsing, orchestration |
+| _TBD_ | _TBD_ | _TBD_ |
+
+## Directory Structure
+
+```
+{{PROJECT_NAME}}/
+├── {{PACKAGE_NAME}}/
+│   ├── main.py              # CLI entry point
+│   ├── models/
+│   │   └── manifest.py      # Pydantic data models
+│   ├── parsers/             # Ingestion / extraction logic
+│   └── exporters/           # Output generation
+├── config/
+│   └── config.yaml
+├── docs/
+│   └── usage_instructions.md
+├── output/                  # Generated artifacts (gitignored)
+└── tests/
+```
+
+## Key Decisions
+
+_Document significant architectural choices made during development._
+
+| Decision | Rationale | Date |
+|:---|:---|:---|
+| _TBD_ | _TBD_ | _TBD_ |
+
+## Dependencies
+
+Key runtime dependencies and their roles:
+
+| Library | Role |
+|:---|:---|
+| `typer` | CLI framework |
+| `rich` | Console output |
+| `pydantic` | Data validation and models |
+| _Add more as needed_ | |
+
+## Known Limitations / Tech Debt
+
+_Track architectural debt here so it isn't forgotten._
+
+- _TBD_

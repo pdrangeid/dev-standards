@@ -1,0 +1,662 @@
+# claude.md — Project Standards & Collaboration Guide
+
+This file encodes the patterns, conventions, and architecture philosophy observed across
+Paul's graph analytics tooling (datasource-graph-analyzer, codebase-graph-analyzer, strategic exporter).
+Use it to maintain consistency across all projects in this ecosystem.
+
+---
+
+## Project Ecosystem Overview
+
+These tools form a **Manifest-First, graph-generation pipeline**:
+
+```
+[Analyzers / Parsers]
+    ↓  JSON Manifest (Source of Truth)
+[Strategic Exporter / Schema Mapper]
+    ↓  Cypher (.cypher files) + LLM-ready analysis
+[Neo4j Knowledge Graph]
+```
+
+Each project is a **connectionless, file-in / file-out utility**. No live DB connection is
+ever required during extraction or export. This is a core architectural constraint — preserve it.
+
+---
+
+## Language & Runtime
+
+- **Python ≥ 3.11** (use match statements, `X | Y` union types, `tomllib`, etc. freely)
+- **Package manager**: `uv` preferred for running scripts (`uv run python -m ...`); `pip` acceptable
+- **Project config**: `pyproject.toml` only — no `setup.py`, no `setup.cfg`
+- **Formatter**: `black` (line length 88)
+- **Linter**: `ruff` (rules: E, F, W, I, UP, B)
+- **Testing**: `pytest` with `pytest-cov`; test files in `tests/`, named `test_*.py`
+
+---
+
+## Dependencies (Core Stack)
+
+| Library | Role |
+|---|---|
+| `pydantic >= 2.x` | All data models / manifests |
+| `typer` | CLI entry points |
+| `rich` | Console output, progress, logging display |
+| `sqlglot` | SQL parsing (DDL, lineage, transformations) |
+| `pandas` | CSV/Parquet sampling and profiling |
+| `numpy` | Sampling math |
+
+- Always pin with `>=` lower bounds, not `==` exact pins (unless a breaking change requires it)
+- Dev extras in `[project.optional-dependencies] dev = [...]` — never in main `dependencies`
+
+---
+
+## Architecture Patterns
+
+### Manifest-First Philosophy
+- **Never** couple extraction directly to graph export in the same code path
+- The JSON manifest is the contract between the ingestion layer and the export layer
+- Manifests must be human-readable and auditable before any Cypher is generated
+- Manifests are versioned (`version` field on `Manifest` model)
+
+### Connectionless Exporters
+- Exporters read from manifest files only — no database connections, no network calls
+- This enables use in air-gapped / restricted environments
+- Cypher files are numbered and sequenced: `01_constraints.cypher`, `02_nodes.cypher`, `03_relationships.cypher`
+
+### URI Convention
+All nodes in the graph are identified by a stable, hierarchical URI:
+```
+{layer_prefix}/{table_name}          # Table node
+{layer_prefix}/{table_name}/{column} # Column node
+transformation/{script_stem}          # Transformation node
+unresolved/{script_name}/{asset}      # UnresolvedAsset node
+```
+- URIs are always **lowercase**
+- URIs are constructed at discovery time and must remain stable across runs
+
+### Confidence & Origin Tracking
+Every relationship carries `origin` and `confidence`:
+- `origin`: `"DDL"` (1.0), `"HEURISTIC"` (0.8), `"ALATION"` (explicit)
+- `confidence`: float 0.0–1.0
+- Heuristic relationships must never silently overwrite DDL relationships
+
+### UnresolvedAsset Pattern
+When a SQL reference cannot be resolved to a known URI:
+- Create an `UnresolvedAsset` node rather than silently dropping the relationship
+- URI format: `unresolved/{script_name}/{asset_name}`
+- Label as `:UnresolvedAsset:Transformation`
+- Set `unresolved=true` property
+- This is the "Data Debt" tracking mechanism — don't shortcut it
+
+---
+
+## Data Models (Pydantic)
+
+- All models in `models/manifest.py` (or equivalent per project)
+- Use `pydantic.BaseModel` with explicit field types — no untyped `dict` fields for core data
+- Flexible/unknown fields go in `custom_properties: Dict[str, Any] = {}`
+- `origins: List[str]` on both tables and columns — always a list, never a single string
+- Sample data stored as `List[Dict[str, Any]]` — the 3:5 sampler ratio (3 dense rows, 5 diverse column values)
+- Use `Literal["DDL", "HEURISTIC", "ALATION"]` for constrained string fields where applicable
+- `Optional[str] = None` for nullable fields, not `str | None` (keep Pydantic v2 compat clean)
+
+---
+
+## CLI Conventions (Typer)
+
+- One `typer.Typer()` app per project, in `main.py`
+- Commands: `discover`, `lineage`, `export` (follow this naming convention)
+- Use `--debug` flag on all commands; wire it to `logging.setLevel(logging.DEBUG)`
+- Use `rich` console for all user-facing output — not bare `print()`
+- Emoji status indicators in console output:
+  - `✅` success / completion
+  - `🔍` discovery / scanning
+  - `✨` new discovery / heuristic match
+  - `🔗` relationship found
+  - `🌿` enrichment
+  - ⚠️ warning (via `logger.warning`)
+- CLI entry point registered in `pyproject.toml` under `[project.scripts]`
+
+Example invocation pattern (always document in README):
+```sh
+PYTHONPATH=. uv run python -m <package>.main <command> --flag value --debug
+```
+
+---
+
+## Logging
+
+- Use `logging.getLogger(__name__)` at module level for all parsers/engines
+- Use `logging.getLogger("ClassName")` inside classes
+- `--debug` flag sets `logging.DEBUG`; default is `logging.INFO`
+- `logger.info()` for significant discoveries and milestones
+- `logger.debug()` for AST node walks, column-level detail, fallback logic
+- `logger.warning()` for orphaned entries, unresolved references, skipped nodes
+- `logger.error()` for parse failures (always include the exception: `f"Failed to parse {file}: {e}"`)
+- Never use `print()` for logging — use rich console for user output, logger for diagnostic output
+
+---
+
+## Cypher Generation Standards
+
+- All MERGE statements must be **idempotent** — use `MERGE`, never `CREATE` for nodes that may already exist
+- Property setting pattern:
+  ```cypher
+  MERGE (n:Label {uri: 'uri_value'})
+  ON CREATE SET n.name = 'name', n.first_seen = datetime('...')
+  ON MATCH SET n.last_verified = datetime('...')
+  SET n.property = 'value';
+  ```
+- All string values escaped via `_escape()` — never f-string raw user data directly into Cypher
+- Timestamps: always use `datetime('ISO8601_STRING')` format, UTC
+- Session timestamp passed into exporter at construction time — never generated mid-export
+- Constraint file (`01_constraints.cypher`) always runs first and is idempotent
+- Use `IF NOT EXISTS` on all `CREATE CONSTRAINT` and `CREATE INDEX` statements
+
+### Node Labels (Layer-Aware)
+Tables and Columns carry a layer label in addition to their base label:
+```
+:Table:DWElement, :Table:SourceElement, :Table:BIElement
+:Column:DWElement, etc.
+```
+Layer map: `DW` → `DWElement`, `SOURCE` → `SourceElement`, `BI` → `BIElement`, `LINEAGE` → `LineageElement`
+
+### Relationship Types (Standard Vocabulary)
+```
+HAS_COLUMN, ORIGINATED_FROM, BELONGS_TO, MANAGED_BY, CLASSIFIED_AS
+REFERENCES, JOINS_TO, INPUT_TO, PRODUCES
+HAS_DATATYPE, REPRESENTS (column → SemanticType or BusinessTerm)
+```
+Do not invent new relationship types without documenting them here.
+
+---
+
+## Error Handling
+
+- Wrap all SQL parse calls in `try/except` — log error and `continue`, never crash the whole run
+- Defensive attribute access on AST nodes: always use `hasattr()` or `getattr(node, 'attr', None)` — sqlglot nodes vary by SQL dialect
+- Orphaned/unmatched entries (e.g., Alation entries for unknown tables) are collected in `_alation_orphans` and surfaced on the manifest — never silently dropped
+- Fallback chains: try the clean path first, then progressively more defensive fallbacks, log each fallback at `debug` level
+
+---
+
+## File & Directory Structure
+
+```
+<project_name>/
+├── pyproject.toml
+├── README.md
+├── ARCHITECTURE.md          # Required for all projects
+├── requirements.txt         # Pinned runtime deps (generated)
+├── requirements-dev.txt     # Points to pyproject.toml dev extras
+├── <package_name>/
+│   ├── __init__.py
+│   ├── main.py              # CLI entry point (typer app)
+│   ├── models/
+│   │   └── manifest.py      # All Pydantic models
+│   ├── parsers/             # or services/ — ingestion logic
+│   ├── exporters/           # Cypher/output generation
+│   └── utils/
+│       ├── type_mapper.py   # TypeMapper (waterfall mapping)
+│       └── sampling.py      # DataSampler (3:5 ratio)
+├── tests/
+├── output/                  # Generated manifests and cypher (gitignored)
+└── test/data/               # Test fixtures (DDL, CSV, JSON)
+```
+
+---
+
+## Documentation Standards
+
+- Every project must have:
+  - `README.md` with Quick Start showing all three pipeline stages with example CLI invocations
+  - `ARCHITECTURE.md` explaining the manifest-first philosophy and component responsibilities
+- ARCHITECTURE.md must include a component table: Component | Responsibility | Key Logic
+- Inline docstrings on all public methods — one-liner minimum, full docstring for complex logic
+- Complex fallback logic (e.g., AST node extraction) should have inline `logger.debug()` comments explaining *why* each fallback exists, not just what it does
+
+## Documentation Currency
+
+Claude should treat README.md and ARCHITECTURE.md as live artifacts,
+not one-time scaffolding. After any session that produces:
+
+- A working new module or command
+- A validated MVP or end-to-end flow
+- A significant refactor that changes how components interact
+- A new CLI argument, config key, or output format
+
+...Claude should pause before closing the session and ask:
+
+  "We just got X working. Want me to update README.md / ARCHITECTURE.md
+   to reflect this before we close out?"
+
+### What to check when updating:
+- README Quick Start — does the example command still work as written?
+- README Workflow section — does it reflect current pipeline steps?
+- ARCHITECTURE.md Data Flow — does the diagram match current reality?
+- ARCHITECTURE.md Component table — any new modules to add?
+- docs/usage_instructions.md — any new flags, args, or config keys?
+
+### What NOT to do:
+- Don't prompt after every small change — only after validated, working functionality
+- Don't rewrite sections that are still accurate
+- Don't update docs speculatively for features not yet working
+- Don't ask mid-session — wait until the user signals something is working
+
+---
+
+## Session Close Checklist
+
+When a user signals they're done for the session (e.g. "ok that's good for now",
+"let's stop here", "committing this"), Claude should quickly check:
+
+1. Were any docs updated to match what was built? If not, offer to do it now.
+2. Are there any known bugs or deferred decisions worth logging to a Lesson node?
+3. Is there anything that should be committed that hasn't been?
+
+Keep this lightweight — one short prompt, not an interrogation.
+
+## TypeMapper Convention
+
+- `TypeMapper.get_full_metadata(native_type, col_name)` returns `{"common_type", "semantic_type", "pii"}`
+- Waterfall mapping: DDL native type → common type → semantic type (via column name regex)
+- PII flagging is automatic via column name patterns (email, ssn, phone, etc.)
+- Always pass both `native_type` AND `col_name` — semantic/PII detection depends on column name
+- TypeMapper is injected as a dependency into engines, never instantiated deep in call stacks
+
+---
+
+## DataSampler Convention (3:5 Ratio)
+
+- 3 "Golden Records" = densest rows (most non-null fields)
+- 5 "Diverse Samples" per column = highest variance values
+- `analyze_table_assets(df, t_samples=2, c_samples=5, max_rows=1000)` — standard call signature
+- `max_rows=1000` default scan window — never load entire files into memory
+- Output: `{"table_samples": [...], "columns": {col_name: {"samples": [...], "allowed_values": [...]}}}`
+
+---
+
+---
+
+## Strategic Exporter — Additional Patterns
+
+The strategic exporter differs from the analyzer tools in one critical way: **it has a live Neo4j connection**. It is the only tool in the ecosystem that does. All conventions below apply specifically to this project.
+
+### Driver & Session Management
+- Use `get_driver()` from `utils.py` — never instantiate `GraphDatabase.driver()` directly in business logic
+- Pass the driver into functions; let them manage their own sessions with `with driver.session() as session:`
+- Never share sessions across major operations — open a new session per logical unit of work
+- Always close drivers that are opened locally: use the `close_driver_after` pattern
+  ```python
+  close_driver_after = False
+  if driver is None:
+      driver = get_driver()
+      close_driver_after = True
+  try:
+      ...
+  finally:
+      if close_driver_after and driver:
+          driver.close()
+  ```
+- `diagnostic_mode.py` anti-pattern: calling `driver.close()` at the end of `run_diagnostic_export()` when the driver was passed in — **don't close drivers you didn't open**
+
+### Configuration Architecture
+- All config loaded from `config/strategicexporter.yaml` via `config.py` — never hardcode paths or connection strings
+- DB credentials exclusively from `.env` via `python-dotenv` — key pattern: `NEO4J_USER_{PROFILE_NAME_UPPER}` / `NEO4J_PASSWORD_{PROFILE_NAME_UPPER}`
+- Multi-environment support via named connection profiles in YAML (`lifeos`, `sandbox_bethegraph`, `pc_desktop`, etc.)
+- `SELECTED_DB_CONNECTION_NAME` is a module-level global set at CLI parse time via `set_selected_db_connection()` — this is intentional for the single-process CLI model
+- `make_output_path(filename, subdir_key=None)` resolves all output paths — never construct output paths manually
+
+### Export Profile System
+- Export behavior is driven by JSON operation profiles in `export-profiles/`
+- Profile fields: `profile_name`, `profile_mode` (`amplifier` | `diagnostic` | `snapshots`), `filters`, `sections`, `description`
+- Export types: `Amplifier` (full payload for LLM), `diagnostic` (section-scoped node query), `snapshots` (static Cypher queries)
+- `--operation-profile` CLI arg loads the profile; `--export-type` can override the inferred type
+- Profile `filters` keys: `node_labels` (list), `relationship_types` (list) — used to scope schema generation
+
+### Amplifier Payload Structure
+The `amplifier_payload.json` is the core LLM-consumable artifact. Its schema must remain stable:
+```json
+{
+  "schema": {
+    "node_labels": [],
+    "relationship_types": [],
+    "property_keys": [],
+    "label_property_map": {},
+    "graph_schema_contract": [],
+    "schema_element_has_schema_links": [],
+    "node_counts": [],
+    "indexes": [],
+    "constraints": []
+  },
+  "sample_queries": {},
+  "agent_behavior_map": {},
+  "environment": { "inferred_tier": "", "platform_source": "" },
+  "meta": { "export_date": "", "notes": "" }
+}
+```
+- `graph_schema_contract` = records from `:GraphSchema` nodes — the binding schema contract for agents
+- `sample_queries` = `{label_lower}_summary` keys with up to 250 representative node display values
+- `agent_behavior_map` = built from `:SchemaElement` nodes — do not generate ad hoc
+
+### GraphSchema & SchemaElement Pattern
+This is the schema governance layer — understand it before modifying schema-related code:
+- `:GraphSchema` nodes are the **schema contract** — one per node label and relationship type
+  - Key properties: `labelName`, `elementType` ('label'|'relationship'), `displayProperty`, `primaryKeyProperty`, `isPrimaryKeyConstrained`
+  - Default `displayProperty`: `"name"`, default `primaryKeyProperty`: `"uuid"`
+- `:SchemaElement` nodes are the **live registry** of what actually exists in the graph
+  - Linked to `:GraphSchema` via `[:HAS_SCHEMA]`
+  - Created/managed by `schema_linker.main()`
+- Run order matters: `schema_generator.main()` → `schema_linker.main()` → `build_amplifier_payload()`
+- `patch_graphschema_integrity()` is a safety net — fills in null `displayProperty`/`primaryKeyProperty` — run it as part of schema generation, not as a workaround
+
+### Backup & Restore
+- APOC-based export — requires APOC plugin on Neo4j instance
+- Always prepend `CREATE CONSTRAINT UNIQUE_IMPORT_NAME IF NOT EXISTS...` before restored data
+- Always append `CALL db.awaitIndexes(300);` after schema statements
+- Stub pattern: labels listed in `stub_node_and_properties` config are converted to lightweight stub nodes rather than fully exported — preserves graph connectivity without exporting large/complex payloads (e.g., `_Neodash_Dashboard`)
+- `excluded_node_labels`: completely omitted from export — no stubs
+- Path templates use `${backup_dir}`, `${source_profile}`, `${timestamp}` substitutions
+
+### Tier Detection
+- `tier_detector.detect_tier(session)` infers Neo4j environment (aura_free / aura_professional / aura_enterprise_or_self_hosted)
+- Uses memory config heuristics; falls back gracefully when `dbms.listConfig()` is restricted (Aura Free)
+- Always inject tier info into `payload["environment"]` — agents use this to calibrate query complexity
+
+### LLM Prompt Management
+- Prompts stored as `.txt` files in `prompts/agent_bootstrap/` and `prompts/operational/`
+- Prompts are versioned via SHA-256 hash (`PromptHash`) tracked in the graph as `:Prompt` nodes
+- `meta_injector.py` handles registering/updating prompt nodes — don't bypass it for prompt updates
+- Prompt drift detection: if a prompt file's hash doesn't match the graph-recorded hash, it's flagged
+- The `llm_amplifier_prompt.txt` and `python_dev_prompt.txt` are always written to the export bundle
+
+### Lesson Logging Protocol (Graph-Native)
+When a meaningful architectural or process insight occurs during a session, it should be logged to the graph. This is a first-class convention, not optional:
+```cypher
+WITH date() AS today, datetime().epochMillis AS nowMillis
+MERGE (s:Session {date: today})
+MERGE (l:Lesson {
+    title: "<Short Lesson Title>",
+    domain: "<Domain>",
+    created: today,
+    createdEpochMillis: nowMillis
+})
+SET l.description = "<Single-line description with \\n for breaks>"
+MERGE (l)-[:LEARNED_DURING]->(s)
+```
+- Domain values follow agent/module names: `"Strategic Exporter"`, `"Cypher Authoring"`, `"GraphOps"`, `"Agent Orchestration"`
+- Always prompt: *"Shall I log a Lesson?"* when a non-trivial insight emerges
+- Session node should also be updated with `actionsTaken` and `achievements` arrays
+
+### Additional Node Labels (Strategic Exporter Graph)
+Beyond the datasource-analyzer labels, this graph uses:
+```
+:GraphSchema, :SchemaElement, :Prompt, :Session, :Lesson
+:AgentSession, :BackupSession, :BusinessTerm
+```
+Relationship types specific to this project:
+```
+HAS_SCHEMA (SchemaElement → GraphSchema)
+LEARNED_DURING (Lesson → Session)
+USED_DURING (Prompt → AgentSession)
+USES_PROMPT, HASHED_AS
+```
+
+---
+
+## Codebase Graph Analyzer — Additional Patterns
+
+This tool is the most **AST-heavy** project in the ecosystem. It produces the same JSON manifest → graph pipeline as the datasource-analyzer, but the extraction layer is Python AST rather than SQL parsing. Key differences and conventions:
+
+### Two-Pass Analysis Architecture
+The analyzer uses a deliberate two-pass design — preserve this, it exists to solve forward-reference problems:
+
+- **Pass 1 — Symbol Discovery** (`_discover_python_symbols`): Walk all `.py` files first using a lightweight `SymbolVisitor`. Catalog every `Function` and `Class` into `global_entities` with minimal properties (name, lineNumber, docString). No relationships created yet.
+- **Pass 2 — Full Parse & Connect** (`_parse_python_file` via `PythonVisitor`): Re-walk every file with full context. Now that `global_entities` is populated, `visit_ImportFrom` can resolve internal imports to real entity IDs rather than falling back to `ExternalModule`.
+
+This is why `analyze()` calls `find_files([".py"])` separately before the full `find_files(all_extensions)` pass. Don't collapse these into a single pass.
+
+### Entity ID Convention (Codebase Analyzer)
+Different from the datasource URI convention — uses `::` as separator:
+```
+{project_name}/{relative/path/to/file.py}::{SymbolName}
+```
+Examples:
+- `my_project/src/utils.py::parse_config`  → Function node
+- `my_project/src/models.py::UserModel`     → Class node
+- `my_project/src/main.py`                  → File node (no `::`)
+- `my_project/src/`                         → Directory node (trailing `/`)
+- `my_project/`                             → ProjectRoot directory node
+
+Use `_get_entity_id(name, file_path)` — never construct these strings manually.
+
+### Node Type Vocabulary (Codebase Analyzer)
+```
+PythonFile, ConfigFile, MarkdownDocument, TextDocument, EnvironmentFile
+Class, Function, Variable
+ExternalModule, ExternalFunction, ExternalClass
+FileDirectory (+ ProjectRoot multi-label for root dir)
+TopLevelStatement (+ MainBlock multi-label for if __name__ == "__main__")
+YamlKey, YamlValue
+Heading, EnvironmentVariable
+```
+
+### Relationship Type Vocabulary (Codebase Analyzer)
+```
+CONTAINS_CLASS, CONTAINS_FUNCTION, CONTAINS_TOPLEVEL
+DEFINES_VARIABLE, USES_VARIABLE
+CODE_IMPORTS, CODE_CALLS, CODE_INHERITS_FROM
+CODE_HAS_VALUE, CONTAINS_KEY
+CODE_DOC_CONTAINS_HEADING
+CODEFILE_CONTAINED_IN   (file → directory)
+CODEFOLDER_CONTAINED_IN (directory → parent directory)
+CODEPROJECT_HAS_ROOT    (CodeProject → ProjectRoot)
+```
+Note the `CODE_` prefix convention for cross-entity semantic relationships (calls, imports, inheritance) vs bare verbs for structural containment.
+
+### `_add_relationship` Signature
+```python
+_add_relationship(source_label, target_label, source_id, target_id, rel_type, properties=None)
+```
+Both `source_label` and `target_label` are required — look them up via `_get_label_by_id(id)` when not immediately known. This is different from the datasource-analyzer which infers labels.
+
+### Multi-Label Nodes
+Some nodes carry multiple labels as a Python list rather than a string:
+```python
+{"id": dir_id, "type": ["FileDirectory", "ProjectRoot"], ...}  # root directory
+{"id": stmt_id, "type": "TopLevelStatement", ...}              # normal top-level
+# MainBlock gets labels added dynamically: labeltype=["TopLevelStatement","MainBlock"]
+```
+Use `has_label(entity, label)` helper — never do `entity["type"] == label` directly, it breaks on list types.
+
+### `safe_primitive()` — Always Use for Property Values
+Neo4j cannot store `dict` or `list` as node properties. Always wrap uncertain values:
+```python
+def safe_primitive(val):
+    if isinstance(val, (dict, list)):
+        return json.dumps(val, ensure_ascii=False)
+    return val
+```
+Apply before setting `codeContent`, `moduleMetadata`, `decorators`, `parameters` etc. as node properties.
+
+### Output Package Format
+The codebase analyzer outputs two JSON files with a specific envelope structure (not a raw manifest):
+```json
+{
+  "package_schema_version": "1.0",
+  "schema_version": "1.0",
+  "ingestion_type": "python_codebase_analysis_nodes",
+  "group_identifier": "{project_name}_codebase_analysis_{timestamp}",
+  "uid": "{project_name}_codebase_analysis_nodes_{timestamp}",
+  "generation_timestamp": "ISO8601",
+  "project_version": "git_tag_or_hash",
+  "branch": "git_branch",
+  "project_name": "my_project",
+  "data_parts": [
+    {
+      "content_type": "codebase_graph_nodes",
+      "payload": { "nodes": [...] }
+    }
+  ]
+}
+```
+The relationships package adds `"dependsOn": nodes_group_id` to link the packages. Always populate `project_version` and `branch` from git — warn if unavailable but don't fail.
+
+### Git Metadata
+```python
+branch, version = get_git_branch_and_version(repo_path)
+```
+- Prefers tag (`git describe --tags --always`), falls back to commit hash
+- Returns `(None, None)` gracefully if not a git repo — warn with `⚠️` but continue with `"unknown"`
+- Always attach `projectName`, `projectVersion`, `projectBranch` to every node before output
+
+### Configuration (Codebase Analyzer)
+- Config in `config/config.yaml`, loaded via `config.py` `get_config(cli_args)`
+- CLI args take precedence over YAML — `get_config()` merges them correctly
+- Key config paths: `codebase_root` (target project to analyze), `output_dir`
+- Output always written to: `{codebase_root}/output/codebase_analysis/{project_name}/`
+- File discovery controlled by `include_file_extensions`, `exclude_paths`, `special_file_names` from YAML — never hardcode these in logic
+- `check_for_hardcoded_secrets` and `check_for_best_practices` flags exist in config — these features are planned/partial, don't remove the config keys
+
+### Import Resolution Strategy
+`visit_ImportFrom` uses a two-guess resolution strategy before falling back to `ExternalModule`:
+1. Guess: `{project_name}/{relative_path_as_module}.py::{alias}` — file-level module
+2. Guess: `{project_name}/{relative_path_as_package}/__init__.py::{alias}` — package-level module
+
+Relative imports (`from . import x`, `from .. import y`) traverse upward from `file_path.parent` by `node.level - 1` levels. Absolute imports resolve from `project_root`. Log all resolution attempts at `DEBUG` level with clear SUCCESS/FAILURE markers.
+
+### Order Index
+Every entity that represents a sequential code construct tracks its position within its file:
+```python
+order_index = self.analyzer.get_next_order_index(file_path)
+```
+This is a per-file monotonically incrementing counter stored in `self.order_indices`. Always set it on Variable, Function, Class, TopLevelStatement, YamlKey, YamlValue nodes. It enables reconstructing code order from the graph.
+
+### Known Issues / Tech Debt to be Aware Of
+- `analyze()` references `my_project_name` and `analyzer` as bare names — these are only defined in the `__main__` block and will `NameError` if `analyze()` is called as a library method. The `CODEPROJECT_HAS_ROOT` relationship creation inside `analyze()` needs to be refactored.
+- `config.py` uses `print()` for YAML load confirmation — should use `logger.info()` to match logging conventions.
+- `_parse_yaml_file` opens the file twice (once at the top, once inside the try block) — minor redundancy.
+- `argparse` is used instead of `typer` — this project predates the typer convention. New CLI additions should use `typer` to align with the ecosystem.
+
+---
+
+## Roadmap & Planned Architecture
+
+### Strategic Exporter — Major Refactor (In Progress)
+The refactor is driven by modularity and a clear separation of concerns. The current `export_runner.py` is over-loaded. Target module structure:
+
+```
+strategic_exporter/
+├── export_runner.py          # Orchestrator ONLY — wiring, no business logic
+├── amplifier_builder.py      # build_amplifier_payload() lives here
+├── schema/
+│   ├── schema_generator.py   # Ensures :GraphSchema nodes exist
+│   ├── schema_linker.py      # SchemaElement ↔ GraphSchema linking
+│   └── schema_mapper.py      # NEW — semantic schema mapping (see below)
+├── graph_management/
+│   └── backup_restore.py
+├── diagnostics/
+│   └── diagnostic_mode.py
+├── meta_injector.py
+├── tier_detector.py
+├── queries.py
+├── config.py
+└── utils.py
+```
+
+Key refactor rules:
+- `export_runner.py` must import and call — never define logic inline
+- Each module owns one concern and can be tested independently
+- Module-level mutable state (`nodes_cypher = []`) must be eliminated — all state on instances
+- `build_amplifier_payload()` should accept a fully-built `schema_dict` rather than re-running discovery internally
+
+### Schema Mapper — New Module (Pre-Req to MCP Extension)
+The `schema_mapper.py` module is the highest-priority new work. Its job:
+- Takes a natural language query (or semantic embedding) as input
+- Performs a **fractional schema match** — returns only the subset of `:GraphSchema` / `:SchemaElement` nodes semantically relevant to the query
+- Enables the MCP extension to pass a lean, query-relevant schema context to the LLM rather than the full graph schema
+
+Design constraints to keep in mind:
+- Must integrate cleanly with the existing `:GraphSchema` / `:SchemaElement` node model
+- Vector similarity matching likely via Neo4j vector index on schema node embeddings (not an external vector DB)
+- Output should be a filtered version of the `graph_schema_contract` structure already in the amplifier payload — same shape, subset of entries
+- Should be callable standalone (for testing) and as a pre-processing step inside `amplifier_builder.py`
+
+### MCP Extension (Downstream of Schema Mapper)
+The custom MCP server will:
+- Expose Neo4j graph query capabilities to Claude / other LLMs as MCP tools
+- Use `schema_mapper.py` to provide query-scoped schema context with each tool call — not the full schema
+- Support both Aura (cloud) and local Neo4j connections via the existing named connection profile system
+- This is the end-goal that the schema mapper refactor is unlocking — keep it in mind when designing interfaces
+
+---
+
+## Working Conventions (Claude Collaboration)
+
+### Tooling
+- **Preferred**: Claude Code (CLI) for active coding sessions — direct filesystem access, no upload/download cycle
+- **Fallback**: Upload files to this chat for review/analysis; produce complete ready-to-save files in response
+- **VSCode** is the primary editor; GitHub for all repos
+- Always produce complete files, not diff-style patches, for any change larger than ~10 lines
+
+### Testing Environment
+- **Local Neo4j**: development and rapid iteration
+- **Aura (cloud)**: staging / validation before committing schema or data changes
+- Connection profile names to use by convention: `pc_desktop` or `bluegraph` for local, `lifeos` / `auratestgraph` for Aura
+- Never hardcode connection details — always use the named profile system in `strategicexporter.yaml`
+
+### Session Continuity
+- This `claude.md` is the shared contract across sessions — reference it at the start of any new coding session
+- If a parallel session (e.g., schema mapper overhaul) produces new conventions, update this file before continuing in other sessions
+- The schema mapper session and the strategic exporter refactor session are interdependent — schema mapper is a pre-req, so interface design decisions there constrain the refactor
+
+### GitHub Workflow
+- Standard branch-per-feature workflow assumed
+- `main` / `master` is stable; feature branches for all active work
+- Update `ARCHITECTURE.md` when module boundaries change significantly — don't let it drift from reality
+
+---
+
+## Cross-Project Standards Summary
+
+| Convention | datasource-graph-analyzer | strategic-exporter | codebase-graph-analyzer |
+|---|---|---|---|
+| Live DB connection | ❌ Never | ✅ Required | ❌ Never |
+| CLI framework | `typer` | `argparse` → migrate to `typer` | `argparse` → migrate to `typer` |
+| Config loading | `pyproject.toml` + YAML | YAML + `.env` | YAML + `.env` |
+| Output format | JSON manifest + `.cypher` | JSON payload + ZIP | JSON package (nodes + rels) |
+| Entity ID separator | `/` (URI-style) | N/A (live graph) | `::` (path::symbol) |
+| Python floor | `>=3.11` | `>=3.8` → align to 3.11 | `>=3.11` |
+| Logging | `logging` + `rich` | `logging` | `logging` (no rich yet) |
+
+---
+
+## What NOT to Do
+
+**Analyzers / datasource-graph-analyzer:**
+- **Don't** add live database connections to extractors or parsers
+- **Don't** use `print()` — use logger or rich console
+- **Don't** silently drop unresolved references — use the UnresolvedAsset pattern
+- **Don't** hardcode URIs — always construct from `uri_prefix` + table/column name
+- **Don't** generate Cypher with unescaped string interpolation — always use `_escape()`
+- **Don't** use module-level mutable state for Cypher accumulation (e.g., `nodes_cypher = []` at module level is a known bug — keep state on the instance)
+- **Don't** create new relationship type names without adding them to the standard vocabulary above
+
+**Codebase Graph Analyzer:**
+- **Don't** collapse the two-pass analysis into one — Pass 1 symbol discovery is required for correct import resolution in Pass 2
+- **Don't** do `entity["type"] == "SomeLabel"` directly — use `has_label(entity, label)` to handle multi-label list types
+- **Don't** set raw `dict` or `list` values as node properties — always run through `safe_primitive()`
+- **Don't** construct entity IDs manually — always use `_get_entity_id(name, file_path)`
+- **Don't** skip `order_index` on sequential entities — it's how code order is reconstructable from the graph
+- **Don't** hardcode `include_file_extensions` or `exclude_paths` in logic — read from config
+
+**Strategic Exporter:**
+- **Don't** close a driver you didn't open — check `close_driver_after` pattern
+- **Don't** hardcode Neo4j URIs or credentials — always use YAML config + `.env`
+- **Don't** construct output paths manually — always use `make_output_path()`
+- **Don't** modify `:GraphSchema` nodes ad hoc — use `schema_generator` and `schema_linker` modules
+- **Don't** skip the `schema_generator.main()` → `schema_linker.main()` sequence before building amplifier payloads
+- **Don't** add new agent behavior logic to `export_runner.py` — it's an orchestrator only; logic belongs in dedicated modules
+- **Don't** add new keys to `amplifier_payload.json` schema without updating the structure doc above
+- **Don't** bypass `meta_injector.py` when updating prompt files — hash drift will be flagged
+- **Don't** write Cypher directly into `export_runner.py` — Cypher belongs in `queries.py` or a dedicated module

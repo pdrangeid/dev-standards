@@ -1,0 +1,22 @@
+# {{PROJECT_NAME}} configuration
+
+paths:
+  output_dir: output
+  # input_dir: input
+
+defaults:
+  # Add project-specific defaults here
+
+output_mode:
+  use_profile_subfolders: false
+
+# Neo4j connection profiles (only needed if this project connects to Neo4j)
+# neo4j:
+#   connections:
+#     pc_desktop:
+#       uri: bolt://localhost:7687
+#       database: neo4j
+#     lifeos:
+#       uri: neo4j+s://<aura-id>.databases.neo4j.io
+#       database: neo4j
+#   # Credentials are in .env: NEO4J_USER_<PROFILE_UPPER> / NEO4J_PASSWORD_<PROFILE_UPPER>
