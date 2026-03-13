@@ -272,7 +272,7 @@ if [ "$DRY_RUN" = false ] && git fetch origin &>/dev/null; then
 fi
 
 if [ "$REMOTE_REACHABLE" = true ]; then
-    if git ls-remote --exit-code --heads origin develop &>/dev/null; then
+    if git rev-parse --verify origin/develop &>/dev/null; then
         # Remote develop already exists — track it instead of pushing
         git checkout -b develop origin/develop 2>/dev/null || git checkout develop
         git branch --set-upstream-to=origin/develop develop 2>/dev/null || true
