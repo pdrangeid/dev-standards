@@ -16,6 +16,7 @@ Clone this repo locally so you always have the scripts at hand:
 
 ```sh
 git clone --depth 1 https://github.com/pdrangeid/dev-standards.git ~/dev-standards
+chmod +x ~/dev-standards/scripts/setup-project.sh
 ```
 
 Add aliases to `~/.bashrc` (or `~/.zshrc`) so the scripts auto-update before every run:
