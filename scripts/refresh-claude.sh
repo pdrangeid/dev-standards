@@ -19,6 +19,9 @@ set -euo pipefail
 # --- Defaults ----------------------------------------------------------------
 CLAUDE_MD="${1:-claude.md}"
 DRY_RUN=false
+DEV_STANDARDS_RAW_MAIN="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
+DEV_STANDARDS_RAW_DEV="https://raw.githubusercontent.com/pdrangeid/dev-standards/develop/claude"
+DEV_STANDARDS_RAW="$DEV_STANDARDS_RAW_DEV"  # default to develop branch for latest updates
 DEV_STANDARDS_RAW="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
 
 # --- Flag parsing ------------------------------------------------------------
