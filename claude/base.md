@@ -17,9 +17,6 @@ These tools form a **Manifest-First, graph-generation pipeline**:
 [Neo4j Knowledge Graph]
 ```
 
-Each project is a **connectionless, file-in / file-out utility**. No live DB connection is
-ever required during extraction or export. This is a core architectural constraint — preserve it.
-
 ---
 
 ## Language & Runtime
@@ -37,12 +34,8 @@ ever required during extraction or export. This is a core architectural constrai
 
 | Library | Role |
 |---|---|
-| `pydantic >= 2.x` | All data models / manifests |
 | `typer` | CLI entry points |
 | `rich` | Console output, progress, logging display |
-| `sqlglot` | SQL parsing (DDL, lineage, transformations) |
-| `pandas` | CSV/Parquet sampling and profiling |
-| `numpy` | Sampling math |
 
 - Always pin with `>=` lower bounds, not `==` exact pins (unless a breaking change requires it)
 - Dev extras in `[project.optional-dependencies] dev = [...]` — never in main `dependencies`
@@ -52,9 +45,10 @@ ever required during extraction or export. This is a core architectural constrai
 ## CLI Conventions (Typer)
 
 - One `typer.Typer()` app per project, in `main.py`
-- Commands: `discover`, `lineage`, `export` (follow this naming convention)
+- Commands should be named for their action (verbs: `run`, `export`, `analyze`, `scan`)
 - Use `--debug` flag on all commands; wire it to `logging.setLevel(logging.DEBUG)`
 - Use `rich` console for all user-facing output — not bare `print()`
+- Register all commands in `pyproject.toml` under `[project.scripts]`
 - Emoji status indicators in console output:
   - `✅` success / completion
   - `🔍` discovery / scanning
@@ -62,7 +56,7 @@ ever required during extraction or export. This is a core architectural constrai
   - `🔗` relationship found
   - `🌿` enrichment
   - ⚠️ warning (via `logger.warning`)
-- CLI entry point registered in `pyproject.toml` under `[project.scripts]`
+  
 
 Example invocation pattern (always document in README):
 ```sh
@@ -86,10 +80,11 @@ PYTHONPATH=. uv run python -m <package>.main <command> --flag value --debug
 
 ## Error Handling
 
-- Wrap all SQL parse calls in `try/except` — log error and `continue`, never crash the whole run
-- Defensive attribute access on AST nodes: always use `hasattr()` or `getattr(node, 'attr', None)` — sqlglot nodes vary by SQL dialect
-- Orphaned/unmatched entries (e.g., Alation entries for unknown tables) are collected in `_alation_orphans` and surfaced on the manifest — never silently dropped
-- Fallback chains: try the clean path first, then progressively more defensive fallbacks, log each fallback at `debug` level
+- Never let a single bad record crash the whole run — catch, log, continue
+- Log failures at `logger.error()` with context: `f"Failed to process {item}: {e}"`
+- Collect and surface skipped/failed items at the end of a run — never silently drop them
+- Fallback chains: try clean path first, then defensive fallbacks; log each fallback at `debug` level
+- Defensive attribute access on objects with variable structure: prefer `getattr(obj, 'attr', None)` over direct access
 
 ---
 
@@ -105,15 +100,8 @@ PYTHONPATH=. uv run python -m <package>.main <command> --flag value --debug
 ├── <package_name>/
 │   ├── __init__.py
 │   ├── main.py              # CLI entry point (typer app)
-│   ├── models/
-│   │   └── manifest.py      # All Pydantic models
-│   ├── parsers/             # or services/ — ingestion logic
-│   ├── exporters/           # Cypher/output generation
-│   └── utils/
-│       ├── type_mapper.py   # TypeMapper (waterfall mapping)
-│       └── sampling.py      # DataSampler (3:5 ratio)
 ├── tests/
-├── output/                  # Generated manifests and cypher (gitignored)
+├── output/                  # Generated manifests or other exports or results (gitignored)
 └── test/data/               # Test fixtures (DDL, CSV, JSON)
 ```
 
@@ -123,7 +111,7 @@ PYTHONPATH=. uv run python -m <package>.main <command> --flag value --debug
 
 - Every project must have:
   - `README.md` with Quick Start showing all three pipeline stages with example CLI invocations
-  - `ARCHITECTURE.md` explaining the manifest-first philosophy and component responsibilities
+  - `ARCHITECTURE.md` explaining the design philosophy, data-flow and component responsibilities
 - ARCHITECTURE.md must include a component table: Component | Responsibility | Key Logic
 - Inline docstrings on all public methods — one-liner minimum, full docstring for complex logic
 - Complex fallback logic (e.g., AST node extraction) should have inline `logger.debug()` comments explaining *why* each fallback exists, not just what it does
@@ -181,10 +169,7 @@ Keep this lightweight — one short prompt, not an interrogation.
 - Always produce complete files, not diff-style patches, for any change larger than ~10 lines
 
 ### Testing Environment
-- **Local Neo4j**: development and rapid iteration
-- **Aura (cloud)**: staging / validation before committing schema or data changes
-- Connection profile names to use by convention: `pc_desktop` or `bluegraph` for local, `lifeos` / `auratestgraph` for Aura
-- Never hardcode connection details — always use the named profile system in `strategicexporter.yaml`
+- Never hardcode connection details — always use the profiles system in a relevant yaml file in /config
 
 ### Session Continuity
 - This `claude.md` is the shared contract across sessions — reference it at the start of any new coding session
@@ -197,27 +182,24 @@ Keep this lightweight — one short prompt, not an interrogation.
 
 ---
 
-## Cross-Project Standards Summary
+## Configuration Conventions
 
-| Convention | datasource-graph-analyzer | strategic-exporter | codebase-graph-analyzer |
-|---|---|---|---|
-| Live DB connection | ❌ Never | ✅ Required | ❌ Never |
-| CLI framework | `typer` | `argparse` → migrate to `typer` | `argparse` → migrate to `typer` |
-| Config loading | `pyproject.toml` + YAML | YAML + `.env` | YAML + `.env` |
-| Output format | JSON manifest + `.cypher` | JSON payload + ZIP | JSON package (nodes + rels) |
-| Entity ID separator | `/` (URI-style) | N/A (live graph) | `::` (path::symbol) |
-| Python floor | `>=3.11` | `>=3.8` → align to 3.11 | `>=3.11` |
-| Logging | `logging` + `rich` | `logging` | `logging` (no rich yet) |
-
+- All project configuration lives in `config/` — never hardcode paths, 
+  credentials, or environment-specific values in source code
+- Credentials exclusively via `.env` (gitignored) — always provide `.env.example`
+- A `config.yaml` (or project-named equivalent) is the primary config file,
+  loaded at startup via a dedicated `config.py` module (if required)
+- Never load config inline in business logic — always via a dedicated `config.py`
+- `config.py` is the only module that reads `.env` and YAML — 
+  everything else receives config as parameters
+- Config should be loaded once at startup and passed down — 
+  not re-read on every function call
 ---
 
 ## What NOT to Do (Base Rules)
 
 **All analyzers / datasource-graph-analyzer:**
-- **Don't** add live database connections to extractors or parsers
-- **Don't** use `print()` — use logger or rich console
-- **Don't** silently drop unresolved references — use the UnresolvedAsset pattern
-- **Don't** hardcode URIs — always construct from `uri_prefix` + table/column name
-- **Don't** generate Cypher with unescaped string interpolation — always use `_escape()`
-- **Don't** use module-level mutable state for Cypher accumulation (e.g., `nodes_cypher = []` at module level is a known bug — keep state on the instance)
-- **Don't** create new relationship type names without adding them to the standard vocabulary
+
+- Don't use `print()` — use logger or rich console
+- Don't hardcode paths, credentials, or environment values in source code
+- Don't re-read config on every function call — load once at startup
