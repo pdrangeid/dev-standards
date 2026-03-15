@@ -5,6 +5,90 @@ and constraint management for all projects that write to or read from Neo4j.
 
 ---
 
+## Shared Neo4j Library — lifeos-neo4j
+
+All lifeos projects that require a Neo4j connection must import from
+`lifeos-neo4j` rather than implementing their own connection management.
+This is the single source of truth for driver creation, profile loading,
+capability detection, and ConnectionContext.
+
+### Adding the dependency
+
+In `pyproject.toml`:
+```toml
+[project]
+dependencies = [
+    "lifeos-neo4j @ file://../../packages/lifeos-neo4j",
+    # adjust relative path based on project location
+]
+```
+
+For projects outside the lifeos monorepo structure, use an absolute path
+or a git reference once lifeos-neo4j is published:
+```toml
+"lifeos-neo4j @ git+https://github.com/pdrangeid/lifeos-neo4j@main"
+```
+
+### Public API
+```python
+from lifeos_neo4j.connection import (
+    get_driver,           # raw Driver for simple cases
+    get_context,          # ConnectionContext — preferred for most use
+    get_default_kg_context,   # reads schemata.default_kg_profile
+    get_default_meta_context, # reads schemata.default_meta_profile
+)
+from lifeos_neo4j.capability_detector import detect_capabilities, CapabilityProfile
+from lifeos_neo4j.profiles import load_profiles
+```
+
+### ConnectionContext
+
+Prefer `get_context()` over `get_driver()` — it carries `driver`,
+`database`, and `profile_name` together so callers don't have to
+track them separately:
+```python
+ctx = get_context("lifeos-kg", config_path)
+
+# Capability detection is explicit and optional — not forced at construction
+ctx.capabilities = detect_capabilities(ctx.driver, ctx.database)
+
+# Use in session
+with ctx.driver.session(database=ctx.database) as session:
+    ...
+```
+
+### close_driver_after pattern
+
+Any function that accepts an optional ConnectionContext must follow
+this pattern — never close a context you didn't create:
+```python
+def my_operation(ctx: ConnectionContext | None = None) -> None:
+    close_ctx_after = ctx is None
+    if ctx is None:
+        ctx = get_context("lifeos-kg", config_path)
+    try:
+        with ctx.driver.session(database=ctx.database) as session:
+            ...
+    finally:
+        if close_ctx_after:
+            ctx.driver.close()
+```
+
+### Integration testing
+
+All projects using lifeos-neo4j follow the same integration test convention:
+
+- Config: `~/.lifeos/test-profiles.yaml` — machine-local, never committed
+- Credentials: `.env` in project root — `NEO4J_USER_TEST_NEO4J` / `NEO4J_PASSWORD_TEST_NEO4J`
+- Skip condition: test skips gracefully if config or credentials absent
+- `conftest.py` must call `load_dotenv()` before collection to ensure
+  env vars are available at skipif evaluation time
+```python
+# tests/conftest.py
+from dotenv import load_dotenv
+load_dotenv()
+```
+
 ## Cypher Generation Standards
 
 - All MERGE statements must be **idempotent** — use `MERGE`, never `CREATE` for nodes that may already exist
@@ -123,3 +207,11 @@ and constraint management for all projects that write to or read from Neo4j.
 - **Don't** use `exists(n.prop)` — use `n.prop IS NULL` / `n.prop IS NOT NULL`
 - **Don't** store maps as node properties — encode as JSON strings
 - **Don't** add new relationship types or node labels without documenting them in `## Project-Specific`
+- **Don't** implement your own `get_driver()` or profile loader — import from lifeos-neo4j
+- **Don't** hardcode Neo4j URIs or credentials anywhere — always profiles + .env
+- **Don't** call `detect_capabilities()` inside `get_context()` — capability
+  detection is explicit, callers opt in
+- **Don't** close a ConnectionContext you didn't create
+- **Don't** share sessions across major operations — one session per logical unit of work
+- **Don't** store `ConnectionContext` as a module-level global — 
+  construct at CLI parse time and pass down
