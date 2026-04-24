@@ -230,6 +230,50 @@ Keep this lightweight — one short prompt, not an interrogation.
 - **Don't** produce diff-style patches for changes — always produce complete files
 - **Don't** let `README.md` or `ARCHITECTURE.md` drift from what the code actually does
 
+Session Management
+The .session/ Directory
+Every project contains a .session/ directory for structured Claude Code session files.
+This is the bridge between architecture/planning sessions (Claude web) and
+implementation sessions (Claude Code).
+.session/
+├── _template.md                  # canonical template — do not edit, copy to create sessions
+├── specs/                        # durable, promoted decisions (always tracked)
+│   └── [topic]-baseline.md       # locked architectural decisions, schemas, contracts
+└── YYYY-MM-DD-[topic].md         # active or archived session files (tracked)
+Starting a Claude Code Session
+At the start of every session, before touching any code:
+
+Read claude.md (always)
+Check for a session file: ls .session/ — if a dated .md file exists and is Status: active, read it
+Read any specs/ files referenced in the session file
+Confirm your understanding of the Goal and Constraints before proceeding
+
+If no session file exists, ask the user if there's a session to load or proceed with
+their in-chat instructions.
+During a Session
+
+Append decisions, discoveries, and deviations to ## Decisions Made This Session
+If a constraint or out-of-scope boundary is hit, surface it explicitly rather than silently working around it
+Do not modify _template.md — copy it, rename it, then edit the copy
+
+Closing a Session
+When the user signals the session is complete:
+
+Update Status: to complete in the session file
+Identify any decisions that should be promoted to specs/ or claude.md
+Offer to move durable decisions to the right location
+Follow the standard Session Close Checklist (docs, deps, commit)
+
+Authoring Workflow
+Session files are typically drafted in Claude web and dropped into .session/ before
+a Claude Code session begins. The standard handoff:
+
+Claude web session → produces .session/YYYY-MM-DD-topic.md
+File dropped into repo
+Claude Code session: "Read .session/2025-04-24-topic.md and proceed"
+
+This keeps planning and implementation cleanly separated while maintaining a full
+decision audit trail in version control.
 
 ---
 

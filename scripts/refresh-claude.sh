@@ -22,7 +22,7 @@ DRY_RUN=false
 DEV_STANDARDS_RAW_MAIN="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
 DEV_STANDARDS_RAW_DEV="https://raw.githubusercontent.com/pdrangeid/dev-standards/develop/claude"
 DEV_STANDARDS_RAW="$DEV_STANDARDS_RAW_DEV"  # default to develop branch for latest updates
-DEV_STANDARDS_RAW="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
+#DEV_STANDARDS_RAW="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
 
 # --- Flag parsing ------------------------------------------------------------
 POSITIONAL_ARGS=()
@@ -124,7 +124,7 @@ CLAUDEHEADER
 if curl -fsSL "${DEV_STANDARDS_RAW}/base.md" >> "$TMP_FILE" 2>/dev/null; then
     echo "  ✅ Fetched base.md"
 else
-    echo "  ❌ Failed to fetch base.md from dev-standards"
+    echo "  ❌ Failed to fetch base.md from dev-standards from ${DEV_STANDARDS_RAW}"
     FETCH_FAILED=true
 fi
 
