@@ -2,10 +2,6 @@
 <!-- Do not edit above ## Project-Specific — run refresh-claude.sh to update -->
 <!-- dev-standards: https://github.com/pdrangeid/dev-standards -->
 
-<!-- NOTE: This file was created by a Claude Code review session. -->
-<!-- Run: ./scripts/refresh-claude.sh --claude-md claude.md -->
-<!-- to populate the auto-generated sections above with current base.md content. -->
-
 # Claude Standards: Base Python Conventions
 
 This file encodes universal patterns and conventions for all Python projects
@@ -230,51 +226,62 @@ Keep this lightweight — one short prompt, not an interrogation.
 - **Don't** produce diff-style patches for changes — always produce complete files
 - **Don't** let `README.md` or `ARCHITECTURE.md` drift from what the code actually does
 
-Session Management
-The .session/ Directory
-Every project contains a .session/ directory for structured Claude Code session files.
+---
+
+## Session Management
+
+### The `.session/` Directory
+
+Every project contains a `.session/` directory for structured Claude Code session files.
 This is the bridge between architecture/planning sessions (Claude web) and
 implementation sessions (Claude Code).
+
+```
 .session/
 ├── _template.md                  # canonical template — do not edit, copy to create sessions
 ├── specs/                        # durable, promoted decisions (always tracked)
 │   └── [topic]-baseline.md       # locked architectural decisions, schemas, contracts
 └── YYYY-MM-DD-[topic].md         # active or archived session files (tracked)
-Starting a Claude Code Session
+```
+
+### Starting a Claude Code Session
+
 At the start of every session, before touching any code:
 
-Read claude.md (always)
-Check for a session file: ls .session/ — if a dated .md file exists and is Status: active, read it
-Read any specs/ files referenced in the session file
-Confirm your understanding of the Goal and Constraints before proceeding
+1. Read `claude.md` (always)
+2. Check for a session file: `ls .session/` — if a dated `.md` file exists and is `Status: active`, read it
+3. Read any `specs/` files referenced in the session file
+4. Confirm your understanding of the **Goal** and **Constraints** before proceeding
 
 If no session file exists, ask the user if there's a session to load or proceed with
 their in-chat instructions.
-During a Session
 
-Append decisions, discoveries, and deviations to ## Decisions Made This Session
-If a constraint or out-of-scope boundary is hit, surface it explicitly rather than silently working around it
-Do not modify _template.md — copy it, rename it, then edit the copy
+### During a Session
 
-Closing a Session
+- Append decisions, discoveries, and deviations to `## Decisions Made This Session`
+- If a constraint or out-of-scope boundary is hit, surface it explicitly rather than silently working around it
+- Do not modify `_template.md` — copy it, rename it, then edit the copy
+
+### Closing a Session
+
 When the user signals the session is complete:
 
-Update Status: to complete in the session file
-Identify any decisions that should be promoted to specs/ or claude.md
-Offer to move durable decisions to the right location
-Follow the standard Session Close Checklist (docs, deps, commit)
+1. Update `Status:` to `complete` in the session file
+2. Identify any decisions that should be promoted to `specs/` or `claude.md`
+3. Offer to move durable decisions to the right location
+4. Follow the standard Session Close Checklist (docs, deps, commit)
 
-Authoring Workflow
-Session files are typically drafted in Claude web and dropped into .session/ before
+### Authoring Workflow
+
+Session files are typically drafted in Claude web and dropped into `.session/` before
 a Claude Code session begins. The standard handoff:
 
-Claude web session → produces .session/YYYY-MM-DD-topic.md
-File dropped into repo
-Claude Code session: "Read .session/2025-04-24-topic.md and proceed"
+1. Claude web session → produces `.session/YYYY-MM-DD-topic.md`
+2. File dropped into repo
+3. Claude Code session: `"Read .session/2025-04-24-topic.md and proceed"`
 
 This keeps planning and implementation cleanly separated while maintaining a full
 decision audit trail in version control.
-
 ---
 
 ## Project-Specific
