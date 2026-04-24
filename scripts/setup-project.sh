@@ -346,6 +346,71 @@ run git -C "$PROJECT_DIR" add -f output/.gitkeep 2>/dev/null || true
 run touch "$PROJECT_DIR/requirements.txt"
 echo "✅ Directory structure created"
 
+# --- Phase 3.5: Session Directory --------------------------------------------
+echo "--- Phase 3.5: Session Directory (.session/) ---"
+ 
+SESSION_DIR="$PROJECT_DIR/.session"
+SPECS_DIR="$SESSION_DIR/specs"
+SESSION_TEMPLATE_URL="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude/session-template.md"
+ 
+run mkdir -p "$SESSION_DIR"
+run mkdir -p "$SPECS_DIR"
+ 
+# Fetch the canonical session template from dev-standards
+if [ "$DRY_RUN" = false ]; then
+    if curl -fsSL "$SESSION_TEMPLATE_URL" -o "$SESSION_DIR/_template.md" 2>/dev/null; then
+        echo "  ✅ Fetched _template.md from dev-standards"
+    else
+        echo "  ⚠️  Could not fetch _template.md — writing minimal local stub"
+        cat > "$SESSION_DIR/_template.md" << 'SESSIONSTUB'
+# Session: [Topic]
+<!-- Copy this file, rename it YYYY-MM-DD-topic.md, then edit the copy. -->
+Date: YYYY-MM-DD
+Repo: [repo-name]
+Branch: [feature/branch-name or develop]
+Status: draft | active | complete
+ 
+## Goal
+One paragraph — what should exist at the end of this session.
+ 
+## Context & Constraints
+- **Decision**: [locked decisions Claude should not revisit]
+- **Out of scope**: [explicit exclusions]
+- **Reference files**: [.session/specs/ files to read first]
+ 
+## Relevant Specs / Schemas / Examples
+[Paste schemas, data shapes, code samples here]
+ 
+## Instructions
+1. Read `claude.md` first.
+2. [Your actual instructions here]
+ 
+## Decisions Made This Session
+_None yet._
+SESSIONSTUB
+    fi
+ 
+    # specs/ README so the folder isn't an empty mystery
+    cat > "$SPECS_DIR/README.md" << 'SPECSREADME'
+# .session/specs/
+ 
+Durable, promoted architectural decisions for this project.
+ 
+Files here are promoted from completed session files when decisions are locked.
+They serve as reference material for future Claude Code sessions — not instructions.
+ 
+Naming convention: `[topic]-baseline.md` or `[topic]-decisions.md`
+SPECSREADME
+ 
+    echo "✅ .session/ directory created"
+    echo "   • .session/_template.md  — copy this to start a new session"
+    echo "   • .session/specs/        — promote locked decisions here after sessions"
+else
+    echo "  [DRY-RUN] Would create: $SESSION_DIR/_template.md"
+    echo "  [DRY-RUN] Would create: $SPECS_DIR/README.md"
+fi
+echo ""
+
 # requirements-dev.txt
 write_file "$PROJECT_DIR/requirements-dev.txt" << 'REQDEV'
 # Developer requirements — managed via pyproject.toml [project.optional-dependencies]

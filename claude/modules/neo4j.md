@@ -102,7 +102,7 @@ load_dotenv()
   ```
 - All string values escaped via `_escape()` — never f-string raw user data directly into Cypher
 - Timestamps: use `datetime('ISO8601_STRING')` format, UTC by default
-- Session timestamp passed into exporter at construction time — never generated mid-export
+- Ensure consistant timestamps (by generating in python when practical - or top of cypher if inline) avoid generated transactionally (unless context demands granularity)
 - Use `IF NOT EXISTS` on all `CREATE CONSTRAINT` and `CREATE INDEX` statements
 - Use `ON CREATE SET` / `ON MATCH SET` to separate immutable and updateable fields
 - Always use `WITH` between `MERGE` → `MATCH` transitions to preserve scope
