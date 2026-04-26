@@ -265,7 +265,18 @@ When the user signals the session is complete:
 1. Update `Status:` to `complete` in the session file
 2. Identify any decisions that should be promoted to `specs/` or `claude.md`
 3. Offer to move durable decisions to the right location
-4. Follow the standard Session Close Checklist (docs, deps, commit)
+4. **Update `claude.md`:**
+   - Append a one-paragraph entry to the **Review Log** covering what was built,
+     what changed, and any bugs fixed
+   - Update **Next Steps** to reflect current state — remove completed items,
+     add newly unblocked ones
+   - Update **Technical Debt** if new deferred items were identified
+5. Follow the standard Session Close Checklist (docs, deps, commit)
+6. if the  `### Review Log` section of `claude.md` exceeds 10 entries, archive all but the 5 most recent to `/CHANGELOG.md` (append, don't overwrite), then remove the archived entries from `claude.md`
+
+> `claude.md` must be updated in the same commit as the session file closure.
+> It is the living contract read at the start of every future session — if it
+> drifts, every subsequent session starts with stale context.
 
 ### Authoring Workflow
 
