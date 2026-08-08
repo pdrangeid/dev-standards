@@ -67,7 +67,7 @@ usage() {
     echo "  --dry-run      Print actions without executing them."
     echo "  --feature      Also create and checkout feature/<branch> off develop."
     echo "  --modules      Comma-separated module list, skips interactive menu."
-    echo "                 Options: neo4j, manifest-analyzer, live-exporter, ast-analyzer, llm-amplifier"
+    echo "                 Options: neo4j, manifest-analyzer, live-exporter, ast-analyzer, llm"
     exit 1
 }
 
@@ -158,13 +158,13 @@ echo ""
 
 # --- Module Selector ---------------------------------------------------------
 # Define available claude.md modules
-declare -a MODULE_KEYS=("neo4j" "manifest-analyzer" "live-exporter" "ast-analyzer" "llm-amplifier")
+declare -a MODULE_KEYS=("neo4j" "manifest-analyzer" "live-exporter" "ast-analyzer" "llm")
 declare -a MODULE_LABELS=(
     "Neo4j / Graph         — Cypher conventions, driver patterns, MERGE/ON CREATE"
     "Manifest Analyzer     — Manifest-first, URI convention, UnresolvedAsset, TypeMapper"
     "Live Exporter         — Amplifier payload, GraphSchema, backup/restore, Lesson logging"
     "AST / Code Analyzer   — Two-pass parse, entity IDs, has_label(), safe_primitive()"
-    "LLM Amplifier         — Prompt engineering, schema mapper, MCP / agent integration"
+    "LLM Pipeline          — Two-pass pipeline, chunking discipline, config conventions"
 )
 
 SELECTED_MODULES=()

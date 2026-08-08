@@ -318,7 +318,6 @@ real functionality and is not the actual product of this repo.
 - `scripts/setup-project.sh:236` — `git clone ... 2>/dev/null` silently swallows errors; failure and dry-run produce the same message
 - `pyproject.toml:38-39` — package name `dev_Standards` (mixed case) doesn't match actual directory `dev_standards/` (lowercase); breaks setuptools on Linux
 - `pyproject.toml:18` — `rich>=13.0,<14.0` upper-bound pin contradicts base.md convention (use `>=` lower bounds only)
-- `claude/modules/llm-amplifier.md` is missing — menu option and README list it but the file doesn't exist; selection warns and fails
 - `claude/HEADER.md:1` — contains a hardcoded example commit hash (`a3f2c1`) that gets copied literally into generated claude.md headers
 - `dev_standards/claude.md.monolith` and `dev_standards/claude-code-session-starter.md` — historical artifacts in the package directory, should be archived or deleted
 - `coverage.xml` and `htmlcov/` are committed to the repo — generated test artifacts, should be gitignored
@@ -328,13 +327,12 @@ real functionality and is not the actual product of this repo.
 ### Next Steps
 
 1. **Fix double-assignment dead code** in both scripts (refresh-claude.sh:23-25, setup-project.sh:620-623) — decide main vs develop default and remove the dead line; low risk, high clarity
-2. **Add `llm-amplifier.md`** or remove it from the module menu and README — broken option creates confusing failures for users
-3. **Fix package name casing** in `pyproject.toml` — `dev_Standards` → `dev_standards`; easy fix, prevents import failures on Linux
-4. **Create a `claude.md`** (this file) and run `refresh-claude.sh` to populate it — the repo should follow its own standards
-5. **Decide Python package fate** — either give `dev_standards/main.py` real functionality (e.g., `validate` command to check claude.md staleness) or remove the Python scaffolding entirely
-6. **Add `coverage.xml`, `htmlcov/`, `.coverage` to `.gitignore`** — already gitignored in generated projects but not here
-7. **Move or delete historical artifacts** — `claude.md.monolith` and `claude-code-session-starter.md`
-8. **Add bats/shellspec tests** for `--dry-run` mode — the flag exists precisely to enable testability
+2. **Fix package name casing** in `pyproject.toml` — `dev_Standards` → `dev_standards`; easy fix, prevents import failures on Linux
+3. **Create a `claude.md`** (this file) and run `refresh-claude.sh` to populate it — the repo should follow its own standards
+4. **Decide Python package fate** — either give `dev_standards/main.py` real functionality (e.g., `validate` command to check claude.md staleness) or remove the Python scaffolding entirely
+5. **Add `coverage.xml`, `htmlcov/`, `.coverage` to `.gitignore`** — already gitignored in generated projects but not here
+6. **Move or delete historical artifacts** — `claude.md.monolith` and `claude-code-session-starter.md`
+7. **Add bats/shellspec tests** for `--dry-run` mode — the flag exists precisely to enable testability
 
 ### Architectural Notes
 
@@ -353,3 +351,4 @@ real functionality and is not the actual product of this repo.
 ### Review Log
 
 - 2026-03-19 — reviewed at eed77a4, 17 issues found (5 incomplete, 6 bugs/fragile, 3 test gaps, 4 architectural concerns)
+- 2026-08-08 — added `claude/modules/llm.md` (two-pass pipeline, chunking discipline, config conventions, thinking-model handling, pre-filtering, optional producer/consumer pattern), distilled from `datasource-graph-analyzer`'s proven patterns per `.session/2026-08-07-llm-pipeline-standards.md`. Along the way, discovered and removed the long-broken `llm-amplifier` module entry (listed in `setup-project.sh`'s menu and this file's own Tech Debt, but the module file never existed) — replaced it with `llm` across `setup-project.sh`, `README.md`, and `docs/usage_instructions.md`. Application of the new module to `lifeos-mcp` is deferred to a separate session in that repo.

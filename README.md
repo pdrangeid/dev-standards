@@ -70,6 +70,7 @@ When prompted (or via `--modules`), select which standards modules apply to your
 | `manifest-analyzer` | Manifest-first philosophy, URI convention, UnresolvedAsset, TypeMapper, DataSampler |
 | `live-exporter` | Strategic Exporter — driver management, amplifier payload, GraphSchema, Lesson logging |
 | `ast-analyzer` | Codebase Graph Analyzer — two-pass parse, entity IDs, `has_label()`, `safe_primitive()` |
+| `llm` | Two-pass LLM pipeline design, chunking discipline, config conventions for LLM calls |
 
 Each selected module is fetched from this repo and composed into the project's `claude.md`
 alongside the universal `base.md` standards.
@@ -138,7 +139,8 @@ dev-standards/
 │       ├── neo4j.md
 │       ├── manifest-analyzer.md
 │       ├── live-exporter.md
-│       └── ast-analyzer.md
+│       ├── ast-analyzer.md
+│       └── llm.md
 └── project-templates/
     ├── pyproject.toml.template
     ├── config.yaml.template
