@@ -44,7 +44,7 @@ Be specific about the deliverable — a working module, a passing test, a commit
      - What the acceptance criteria are
      - Any ordering constraints (do X before Y) -->
 
-1. Read `claude.md` first.
+1. Read `AGENTS.md` first.
 2. Read any reference files listed above.
 3. [Your actual instructions here]
 

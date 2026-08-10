@@ -157,7 +157,7 @@ fi
 echo ""
 
 # --- Module Selector ---------------------------------------------------------
-# Define available claude.md modules
+# Define available AGENTS.md modules
 declare -a MODULE_KEYS=("neo4j" "manifest-analyzer" "live-exporter" "ast-analyzer" "llm")
 declare -a MODULE_LABELS=(
     "Neo4j / Graph         — Cypher conventions, driver patterns, MERGE/ON CREATE"
@@ -180,7 +180,7 @@ if [ -n "$MODULES_ARG" ]; then
 else
     # Interactive multi-select menu
     echo "--- Claude Module Selection ---"
-    echo "Select which claude.md modules apply to this project."
+    echo "Select which AGENTS.md modules apply to this project."
     echo "Enter numbers separated by spaces (e.g. 1 3), or press Enter for none."
     echo ""
 
@@ -204,7 +204,7 @@ else
 
     echo ""
     if [ ${#SELECTED_MODULES[@]} -eq 0 ]; then
-        echo "ℹ️  No modules selected — claude.md will contain base standards only."
+        echo "ℹ️  No modules selected — AGENTS.md will contain base standards only."
     else
         echo "✅ Selected modules:"
         for m in "${SELECTED_MODULES[@]}"; do
@@ -382,7 +382,7 @@ One paragraph — what should exist at the end of this session.
 [Paste schemas, data shapes, code samples here]
  
 ## Instructions
-1. Read `claude.md` first.
+1. Read `AGENTS.md` first.
 2. [Your actual instructions here]
  
 ## Decisions Made This Session
@@ -680,25 +680,26 @@ activate_env.ps1
 GITIGNORE
 echo "✅ .gitignore created"
 
-# claude.md — fetch base + modules from dev-standards, append Project-Specific stub
-echo "Generating claude.md..."
+# AGENTS.md — fetch base + modules from dev-standards, append Project-Specific stub
+echo "Generating AGENTS.md..."
 DEV_STANDARDS_RAW_MAIN="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
 DEV_STANDARDS_RAW_DEV="https://raw.githubusercontent.com/pdrangeid/dev-standards/develop/claude"
 DEV_STANDARDS_RAW="$DEV_STANDARDS_RAW_DEV"  # default to develop branch for latest updates
-CLAUDE_MD="$PROJECT_DIR/claude.md"
+AGENTS_MD="$PROJECT_DIR/AGENTS.md"
+CLAUDE_MD="$PROJECT_DIR/CLAUDE.md"
 FETCH_FAILED=false
 
 if [ "$DRY_RUN" = false ]; then
-    # Header block — encodes which modules were selected so refresh-claude.sh knows
-    cat > "$CLAUDE_MD" << CLAUDEHEADER
+    # Header block — encodes which modules were selected so refresh-dev-standards.sh knows
+    cat > "$AGENTS_MD" << AGENTSHEADER
 <!-- AUTO-GENERATED: base + modules[${MODULES_STRING}] -->
-<!-- Do not edit above ## Project-Specific — run refresh-claude.sh to update -->
+<!-- Do not edit above ## Project-Specific — run refresh-dev-standards.sh to update -->
 <!-- dev-standards: https://github.com/pdrangeid/dev-standards -->
 
-CLAUDEHEADER
+AGENTSHEADER
 
     # Fetch base.md
-    if curl -fsSL "${DEV_STANDARDS_RAW}/base.md" >> "$CLAUDE_MD" 2>/dev/null; then
+    if curl -fsSL "${DEV_STANDARDS_RAW}/base.md" >> "$AGENTS_MD" 2>/dev/null; then
         echo "  ✅ Fetched base.md"
     else
         echo "  ⚠️  Could not fetch base.md from dev-standards (repo may not have it yet)"
@@ -707,7 +708,7 @@ CLAUDEHEADER
 
     # Fetch each selected module
     for module in "${SELECTED_MODULES[@]}"; do
-        if curl -fsSL "${DEV_STANDARDS_RAW}/modules/${module}.md" >> "$CLAUDE_MD" 2>/dev/null; then
+        if curl -fsSL "${DEV_STANDARDS_RAW}/modules/${module}.md" >> "$AGENTS_MD" 2>/dev/null; then
             echo "  ✅ Fetched module: ${module}.md"
         else
             echo "  ⚠️  Could not fetch module: ${module}.md (may not exist yet in dev-standards)"
@@ -715,14 +716,14 @@ CLAUDEHEADER
     done
 
     # Project-Specific stub — always appended last, never overwritten by refresh
-    cat >> "$CLAUDE_MD" << PROJECTSTUB
+    cat >> "$AGENTS_MD" << PROJECTSTUB
 
 ---
 
 ## Project-Specific
 
 > This section is maintained by Claude during coding sessions.
-> Run \`refresh-claude.sh\` to update the auto-generated sections above
+> Run \`refresh-dev-standards.sh\` to update the auto-generated sections above
 > without touching anything below this line.
 
 ### Overview
@@ -736,12 +737,17 @@ _Track known bugs and deferred work here._
 PROJECTSTUB
 
     if [ "$FETCH_FAILED" = true ]; then
-        echo "  ℹ️  claude.md created with stub content — populate dev-standards repo to enable full fetch."
+        echo "  ℹ️  AGENTS.md created with stub content — populate dev-standards repo to enable full fetch."
     else
-        echo "✅ claude.md generated (base + ${#SELECTED_MODULES[@]} module(s) + Project-Specific stub)"
+        echo "✅ AGENTS.md generated (base + ${#SELECTED_MODULES[@]} module(s) + Project-Specific stub)"
     fi
+
+    # CLAUDE.md bridge stub — imports AGENTS.md, leaves room for Claude-specific additions
+    printf '@AGENTS.md\n\n## Claude Code\n' > "$CLAUDE_MD"
+    echo "✅ CLAUDE.md stub created"
 else
-    echo "  [DRY-RUN] Would generate claude.md with modules: [${MODULES_STRING}]"
+    echo "  [DRY-RUN] Would generate AGENTS.md with modules: [${MODULES_STRING}]"
+    echo "  [DRY-RUN] Would generate CLAUDE.md stub"
 fi
 echo ""
 

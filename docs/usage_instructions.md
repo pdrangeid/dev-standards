@@ -21,10 +21,10 @@ PYTHONPATH=. uv run python -m dev_Standards.main --debug
 Edit `config/config.yaml` to set paths and defaults.
 Copy `.env.example` to `.env` and fill in credentials.
 
-## claude.md Modules
+## AGENTS.md Modules
 
 `setup-project.sh --modules <list>` (or the interactive menu) composes a new
-project's `claude.md` from `claude/base.md` plus any of the modules below,
+project's `AGENTS.md` from `claude/base.md` plus any of the modules below,
 fetched from `claude/modules/`:
 
 | Module key | What it covers |

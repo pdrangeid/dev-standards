@@ -1,7 +1,7 @@
 # Claude Standards: Base Python Conventions
 
 This file encodes universal patterns and conventions for all Python projects
-in this ecosystem. It is auto-fetched by `setup-project.sh` and `refresh-claude.sh`.
+in this ecosystem. It is auto-fetched by `setup-project.sh` and `refresh-dev-standards.sh`.
 
 ---
 
@@ -97,7 +97,8 @@ uv run python -m <package>.main <command> --flag value --debug
 ├── pyproject.toml
 ├── README.md
 ├── ARCHITECTURE.md              # Required for all projects
-├── claude.md                    # Auto-generated standards + Project-Specific section
+├── AGENTS.md                    # Auto-generated standards + Project-Specific section
+├── CLAUDE.md                    # Bridge stub — `@AGENTS.md` import + Claude Code section
 ├── requirements.txt             # Pinned runtime deps (generated)
 ├── requirements-dev.txt         # Points to pyproject.toml dev extras
 ├── <package_name>/
@@ -195,9 +196,9 @@ Keep this lightweight — one short prompt, not an interrogation.
 - **VSCode** is the primary editor; GitHub for all repos
 
 ### Session Continuity
-- `claude.md` is the shared contract across sessions — read it at the start of
+- `AGENTS.md` is the shared contract across sessions — read it at the start of
   every new coding session before touching any code
-- If a parallel session produces new conventions, update `claude.md` before
+- If a parallel session produces new conventions, update `AGENTS.md` before
   continuing in other sessions to prevent drift
 
 ### GitHub Workflow
@@ -244,7 +245,7 @@ implementation sessions (Claude Code).
 
 At the start of every session, before touching any code:
 
-1. Read `claude.md` (always)
+1. Read `AGENTS.md` (always)
 2. Check for a session file: `ls .session/` — if a dated `.md` file exists and is `Status: active`, read it
 3. Read any `specs/` files referenced in the session file
 4. Confirm your understanding of the **Goal** and **Constraints** before proceeding
@@ -263,18 +264,18 @@ their in-chat instructions.
 When the user signals the session is complete:
 
 1. Update `Status:` to `complete` in the session file
-2. Identify any decisions that should be promoted to `specs/` or `claude.md`
+2. Identify any decisions that should be promoted to `specs/` or `AGENTS.md`
 3. Offer to move durable decisions to the right location
-4. **Update `claude.md`:**
+4. **Update `AGENTS.md`:**
    - Append a one-paragraph entry to the **Review Log** covering what was built,
      what changed, and any bugs fixed
    - Update **Next Steps** to reflect current state — remove completed items,
      add newly unblocked ones
    - Update **Technical Debt** if new deferred items were identified
 5. Follow the standard Session Close Checklist (docs, deps, commit)
-6. if the  `### Review Log` section of `claude.md` exceeds 10 entries, archive all but the 5 most recent to `/CHANGELOG.md` (append, don't overwrite), then remove the archived entries from `claude.md`
+6. if the  `### Review Log` section of `AGENTS.md` exceeds 10 entries, archive all but the 5 most recent to `/CHANGELOG.md` (append, don't overwrite), then remove the archived entries from `AGENTS.md`
 
-> `claude.md` must be updated in the same commit as the session file closure.
+> `AGENTS.md` must be updated in the same commit as the session file closure.
 > It is the living contract read at the start of every future session — if it
 > drifts, every subsequent session starts with stale context.
 

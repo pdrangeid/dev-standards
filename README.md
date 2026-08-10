@@ -3,9 +3,9 @@
 Centralized Python project scaffolding and Claude Code collaboration standards
 for the graph analytics ecosystem. Provides:
 
-- **`setup-project.sh`** — scaffold a new Python project (repo, venv, structure, `claude.md`)
-- **`refresh-claude.sh`** — pull updated standards into an existing project's `claude.md`
-- **`claude/`** — modular `claude.md` content (base + project-type modules)
+- **`setup-project.sh`** — scaffold a new Python project (repo, venv, structure, `AGENTS.md`)
+- **`refresh-dev-standards.sh`** — pull updated standards into an existing project's `AGENTS.md` (and self-migrate legacy `claude.md` projects on first run)
+- **`claude/`** — modular `AGENTS.md` content (base + project-type modules)
 - **`project-templates/`** — reusable config and architecture stubs
 
 ---
@@ -17,14 +17,14 @@ Clone this repo locally so you always have the scripts at hand:
 ```sh
 git clone --depth 1 https://github.com/pdrangeid/dev-standards.git ~/dev-standards
 chmod +x ~/dev-standards/scripts/setup-project.sh
-chmod +x ~/dev-standards/scripts/refresh-claude.sh
+chmod +x ~/dev-standards/scripts/refresh-dev-standards.sh
 ```
 
 Add aliases to `~/.bashrc` (or `~/.zshrc`) so the scripts auto-update before every run:
 
 ```sh
 alias scaffold="git -C ~/dev-standards pull --quiet && ~/dev-standards/scripts/setup-project.sh"
-alias refresh-claude="git -C ~/dev-standards pull --quiet && ~/dev-standards/scripts/refresh-claude.sh"
+alias refresh-standards="git -C ~/dev-standards pull --quiet && ~/dev-standards/scripts/refresh-dev-standards.sh"
 ```
 
 Then reload:
@@ -72,7 +72,7 @@ When prompted (or via `--modules`), select which standards modules apply to your
 | `ast-analyzer` | Codebase Graph Analyzer — two-pass parse, entity IDs, `has_label()`, `safe_primitive()` |
 | `llm` | Two-pass LLM pipeline design, chunking discipline, config conventions for LLM calls |
 
-Each selected module is fetched from this repo and composed into the project's `claude.md`
+Each selected module is fetched from this repo and composed into the project's `AGENTS.md`
 alongside the universal `base.md` standards.
 
 ### What Gets Created
@@ -85,7 +85,8 @@ alongside the universal `base.md` standards.
 ├── .gitignore
 ├── .env.example
 ├── activate_env.sh          # Source to activate the uv venv
-├── claude.md                # Auto-generated: base + your selected modules + Project-Specific stub
+├── AGENTS.md                # Auto-generated: base + your selected modules + Project-Specific stub
+├── CLAUDE.md                # Bridge stub — `@AGENTS.md` import + Claude Code section
 ├── config/
 │   └── config.yaml
 ├── docs/
@@ -106,22 +107,38 @@ dependencies are installed in editable mode.
 
 ## Refreshing Standards in an Existing Project
 
-After standards in this repo are updated, sync any project's `claude.md`:
+After standards in this repo are updated, sync any project's `AGENTS.md`:
 
 ```sh
 cd ~/Projects/my-project
-refresh-claude
+refresh-standards
 ```
 
 Or for a project in a non-standard location:
 
 ```sh
-refresh-claude --claude-md /path/to/claude.md
+refresh-standards --agents-md /path/to/AGENTS.md
 ```
 
-`refresh-claude.sh` reads the `<!-- AUTO-GENERATED: base + modules[...] -->` header
+`refresh-dev-standards.sh` reads the `<!-- AUTO-GENERATED: base + modules[...] -->` header
 written by `setup-project.sh`, re-fetches those exact modules, and replaces
 everything above `## Project-Specific` — leaving your project-specific notes untouched.
+
+### Migrating an Older Project (`claude.md` → `AGENTS.md`)
+
+Projects scaffolded before this repo switched to `AGENTS.md` still have a `claude.md`.
+Running `refresh-dev-standards.sh` against one of these projects detects the legacy
+file automatically and migrates it in place — no separate command needed:
+
+```sh
+cd ~/Projects/my-older-project
+refresh-standards
+```
+
+This converts `claude.md` → `AGENTS.md` (preserving `## Project-Specific` byte-for-byte)
+and creates a `CLAUDE.md` bridge stub for Claude Code, without touching any hand-authored
+content already in `CLAUDE.md`. The migration only runs once — subsequent runs take the
+normal refresh path.
 
 ---
 
@@ -130,8 +147,8 @@ everything above `## Project-Specific` — leaving your project-specific notes u
 ```
 dev-standards/
 ├── scripts/
-│   ├── setup-project.sh     # New project scaffolding
-│   └── refresh-claude.sh    # Update auto-generated claude.md sections
+│   ├── setup-project.sh          # New project scaffolding
+│   └── refresh-dev-standards.sh  # Update auto-generated AGENTS.md sections (+ claude.md migration)
 ├── claude/
 │   ├── HEADER.md            # Auto-gen comment block template
 │   ├── base.md              # Universal Python standards (always included)
