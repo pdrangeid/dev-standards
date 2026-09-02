@@ -80,6 +80,41 @@ uv run python -m <package>.main <command> --flag value --debug
 
 ---
 
+## Logging Contract (Inter-Tool)
+
+Any tool whose stdout/stderr is captured to a log file that another tool parses
+must satisfy these five rules. They are a **machine-parse contract, not a style
+guide** — `lifeos-jobwatch` reads the four nightly cron logs into a run/issue
+model and its parser depends on them. Rules 1 and 5 exist because of specific
+measured fragility; see
+`lifeos-jobwatch/.session/2026-09-02-jobwatch-pre-freeze-golden-census-logging-contract.md`.
+
+1. **Root logger name equals the distribution package name, with underscores.**
+   `logging.getLogger(__name__)` from a module inside `lifeos_mcp/` satisfies
+   this. The root segment is a durable identifier — renaming it is a breaking
+   change requiring a graph migration, the same as renaming a node label.
+2. **Every scheduled job runs under the `run_uv_script.sh` wrapper**, so its log
+   carries `>>> Executing <script> at <when>` and
+   `<<< Finished <script> rc=<n> duration_sec=<n> at <when>`. The footer is
+   authoritative for run status and makes per-job terminator markers unnecessary.
+3. **Level semantics.** `WARNING` = degraded but the run continues.
+   `ERROR` = a unit of work failed. `CRITICAL` / uncaught = the run is dead.
+   These drive `warn_count` / `error_count` and downstream event caps (ERROR is
+   never capped), so inflating a warning to an error has direct graph cost.
+4. **Timestamp format is `%Y-%m-%d %H:%M:%S,%f`, host-local**, matching the
+   current `PYLOG` grammar. Structured / JSON logging is a welcome future change
+   but is a new parse branch, not a drop-in — coordinate it with the consuming
+   tool.
+5. **Any rich summary table must be accompanied by a plain log line carrying the
+   same values**, e.g.
+   `[INFO] lifeos_mcp.tools.ingest: SUMMARY nodes=412 rels=1180 status=partial`.
+   Box-drawing table parsing is the most fragile path in a log reader and is
+   often the only structured-data path out of these tools — a redundant text
+   line demotes it from load-bearing to convenience. This is the single
+   highest-value rule in the list.
+
+---
+
 ## Error Handling
 
 - Never let a single bad record crash the whole run — catch, log, continue
