@@ -7,12 +7,15 @@
 name: lifeos-logwatch-hostops-refactor
 description: Align lifeos-logwatch with lifeos-hostops; fix cranston-llm telemetry gap
 
-# Absolute, no '~'. Every repo below must exist as a directory under this root.
-repos_root: /home/pdrangeid/develop
+# Absolute, no '~' — the loader rejects both relative paths and unexpanded '~'
+# (see Workspace._require_absolute) so this file means the same thing regardless
+# of which user or shell renders it. Replace with the absolute path under which
+# every repo listed below lives on the machine you run `workspace render` on.
+repos_root: /home/YOUR_USERNAME/develop
 
 # Optional: directory holding <repo_with_underscores>_registry.yaml files (or an
 # aggregate registry.yaml). A registry `purpose` is preferred over `role` below.
-# registry_dir: /home/pdrangeid/Projects
+# registry_dir: /home/YOUR_USERNAME/Projects
 
 repos:
   - name: lifeos-hostops
