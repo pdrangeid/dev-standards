@@ -8,11 +8,13 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from dev_standards.logging_setup import configure_logging
+
 from .fragments import resolve_fragments_dir
 from .models import WorkspaceError, load_workspace
 from .render import apply_plan, diff_plan, plan_render
 
-logger = logging.getLogger("workspace")
+logger = logging.getLogger(__name__)
 console = Console()
 workspace_app = typer.Typer(
     help="Scaffold and maintain multi-repo Claude Code workspaces."
@@ -26,13 +28,6 @@ _FRAGMENTS = typer.Option(
     "--fragments-dir",
     help="dev-standards claude/ dir (default: $DEV_STANDARDS_CLAUDE_DIR or checkout).",
 )
-
-
-def _setup_logging(debug: bool) -> None:
-    logging.basicConfig(
-        level=logging.DEBUG if debug else logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
 
 
 def _fail(e: WorkspaceError) -> "typer.Exit":
@@ -63,7 +58,7 @@ def new(
     debug: bool = _DEBUG,
 ) -> None:
     """Create a workspace: folder, git init, render, session template, first commit."""
-    _setup_logging(debug)
+    configure_logging(debug)
     try:
         if path.exists() and any(path.iterdir()):
             raise WorkspaceError(f"{path} already exists and is not empty")
@@ -104,7 +99,7 @@ def render(
     debug: bool = _DEBUG,
 ) -> None:
     """Re-render generated files after editing workspace.yaml."""
-    _setup_logging(debug)
+    configure_logging(debug)
     try:
         root = path.resolve()
         ws = load_workspace(root / YAML_NAME)
@@ -130,7 +125,7 @@ def check(
     debug: bool = _DEBUG,
 ) -> None:
     """Validate workspace.yaml and report drift between it and the rendered files."""
-    _setup_logging(debug)
+    configure_logging(debug)
     try:
         root = path.resolve()
         ws = load_workspace(root / YAML_NAME)

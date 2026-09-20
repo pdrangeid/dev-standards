@@ -205,13 +205,75 @@ workspace is re-rendered on another machine — commit the result or leave it, a
 
 ---
 
+## Repo Registry
+
+Each repo describes itself in a small git-tracked file, `<repo_with_underscores>_registry.yaml`,
+at its root (`purpose`, `interfaces`, `contracts`, `integration_points`, `model_prefs`). A
+machine-local **hub**, `~/.repository_registry/`, holds one symlink per repo plus a generated
+rollup, so every repo's registry is discoverable from one place without moving the file out of
+that repo's git history. The workspace repo-map reads `purpose` from it. The full schema is in
+[docs/registry-schema.md](docs/registry-schema.md).
+
+```sh
+# Preferred
+uv run dev-standards registry add ~/develop/my-repo      # generate its file, link it, rebuild rollup
+uv run dev-standards registry generate ~/develop/my-repo # regenerate one repo's file on demand
+uv run dev-standards registry refresh                    # regenerate every linked repo, then the rollup
+uv run dev-standards registry check                      # validate the hub; exit 1 on problems
+
+# Fallback (venv activated)
+dev-standards registry refresh --debug
+```
+
+Point a workspace at the hub with `registry_dir: /home/YOUR_USERNAME/.repository_registry` in
+`workspace.yaml` (absolute path; `~` is rejected on purpose).
+
+Ad hoc tools that want the whole ecosystem at once (for example a Mermaid flowchart script)
+should read the hub's generated `~/.repository_registry/registry.yaml` instead of a hand-appended file.
+
+### How generation works
+
+- **An LLM describes the repo; it never edits files.** `generate` sends the repo's `README.md`,
+  `ARCHITECTURE.md`, `AGENTS.md` (or legacy `claude.md`), `pyproject.toml` and
+  `docs/usage_instructions.md` to an LLM command on stdin, validates the reply against the schema,
+  and only then writes. A failed or malformed reply never touches an existing file.
+- **Overwrite, never append.** Re-running replaces the repo's single file.
+- **No-op when nothing changed.** The file records `generated_from`, a hash of the source docs and
+  the prompt version. If it still matches, the LLM is not called and nothing is written, so
+  `refresh` is cheap and a second run produces no diff. `--force` regenerates anyway. A hand edit
+  survives until one of the source docs changes.
+- **LLM command.** Default `claude -p`. Override with `--llm-cmd` or
+  `$DEV_STANDARDS_REGISTRY_LLM_CMD` — any CLI that reads a prompt on stdin and prints the answer,
+  e.g. `gemini --skip-trust -p "Respond to the request above."`. It runs from an empty temp
+  directory, never from the repo, so repo-local tool config is not loaded.
+- **Hub location.** `~/.repository_registry/`, or `--hub` / `$DEV_STANDARDS_REGISTRY_HUB`. The hub
+  is machine-local and never git-tracked; `registry add` is how a repo joins it, and the linked
+  repos are what `refresh` iterates.
+
+### Cadence
+
+**Weekly `dev-standards registry refresh` is the source of truth**; `generate` / `add` are
+available on demand but nothing requires running them at session close. Because unchanged repos
+are skipped without an LLM call, a weekly run only pays for repos whose docs changed. `refresh`
+keeps going if one repo fails, reports the failures, and exits 1 so a scheduler can alert.
+
+This repo documents the schedule but does not install it. When you schedule it, run it under the
+`run_uv_script.sh` wrapper so its log carries the `>>> Executing` / `<<< Finished rc=` markers the
+Logging Contract requires; `refresh` emits the plain `SUMMARY action=refresh ...` line that
+contract asks for alongside its console output.
+
+---
+
 ## Repository Structure
 
 ```
 dev-standards/
 ├── dev_standards/
-│   ├── main.py              # typer app; `workspace` sub-app is registered here
-│   └── workspace/           # `dev-standards workspace` new / render / check
+│   ├── main.py              # typer app; `workspace` and `registry` sub-apps are registered here
+│   ├── workspace/           # `dev-standards workspace` new / render / check
+│   └── registry/            # `dev-standards registry` generate / add / refresh / rollup / check
+├── docs/
+│   └── registry-schema.md   # the registry file contract
 ├── scripts/
 │   ├── setup-project.sh          # New project scaffolding
 │   └── refresh-dev-standards.sh  # Update auto-generated AGENTS.md sections (+ claude.md migration)

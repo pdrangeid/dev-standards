@@ -15,7 +15,9 @@ repos_root: /home/YOUR_USERNAME/develop
 
 # Optional: directory holding <repo_with_underscores>_registry.yaml files (or an
 # aggregate registry.yaml). A registry `purpose` is preferred over `role` below.
-# registry_dir: /home/YOUR_USERNAME/Projects
+# The recommended value is the machine-local registry hub (see docs/registry-schema.md),
+# populated with `dev-standards registry add <repo>`. Absolute path, no '~'.
+# registry_dir: /home/YOUR_USERNAME/.repository_registry
 
 repos:
   - name: lifeos-hostops
