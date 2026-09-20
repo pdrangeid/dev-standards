@@ -3,18 +3,25 @@
 ## Quick Start
 
 ```sh
-# Activate environment
-source activate_env.sh
+# Preferred
+uv venv && uv pip install -e .[dev]
+uv run dev-standards workspace check ~/workspaces/my-effort --debug
 
-# Run (update once CLI args are defined)
-PYTHONPATH=. uv run python -m dev_Standards.main --debug
+# Fallback (traditional venv activated)
+dev-standards workspace check ~/workspaces/my-effort --debug
 ```
 
 ## Commands
 
 | Command | Arguments | Description |
 |:---|:---|:---|
-| _TBD_ | _TBD_ | _TBD_ |
+| `dev-standards workspace new <path>` | `--from workspace.yaml` (required), `--no-commit`, `--fragments-dir`, `--debug` | Validate the yaml, create the folder, `git init`, render, copy `.session/_template.md`, make the first commit |
+| `dev-standards workspace render [<path>]` | `--fragments-dir`, `--debug` | Re-render generated files after editing `workspace.yaml`; hand-written `AGENTS.md` sections and unrelated `settings.local.json` keys are preserved |
+| `dev-standards workspace check [<path>]` | `--fragments-dir`, `--debug` | Validate the yaml and report drift between it and the rendered files; exits 1 on drift |
+
+`path` defaults to the current directory. Fragments are read from the local `claude/`
+directory of an editable install, or from `--fragments-dir` / `$DEV_STANDARDS_CLAUDE_DIR`.
+See `README.md` (`## Multi-Repo Workspaces`) for the workflow and what is safe to hand-edit.
 
 ## Configuration
 
