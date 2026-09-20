@@ -110,7 +110,7 @@ llm:
     timeout_seconds: 600
     extra_params: {}
 
-  chat:                          # Pass 2 — small/local model, structured extraction
+  extraction:                          # Pass 2 — small/local model, structured 
     base_url: "http://localhost:11434"
     model: "gemma3:4b"
     api_key: "ollama"
@@ -183,7 +183,169 @@ token budget frees up for the actual answer, or timing out mid-thought.
 
 Suppression flags are not universally honored. Strip `<think>...</think>`
 from output defensively even when suppression is requested, in case the
-model ignores the flag — never assume the flag alone is sufficient.
+model ignores the flag — never assume the flag alone is sufficient. See
+**Defensive JSON Extraction Pipeline** below for the concrete
+implementation.
+
+---
+
+## Defensive JSON Extraction Pipeline
+
+Extraction-role output ("return a JSON array") fails in more ways than just
+unsuppressed `<think>` blocks: markdown code fences around the payload,
+trailing commas before `}`/`]`, mid-output truncation from a token-budget
+cutoff, and stray non-ASCII tokenizer artifacts or model-specific enum
+shorthand inside individual fields. Treat all of these as expected failure
+modes of extraction calls, not edge cases — parse defensively, in a fixed
+stage order.
+
+### Pipeline order (fixed — order matters)
+
+1. Strip `<think>...</think>` blocks (defense-in-depth even when `think:
+   false` was requested)
+2. Strip markdown code fences
+3. Sanitize known syntactic LLM errors (trailing commas before `}`/`]`)
+4. Parse; on failure, attempt truncation recovery (salvage up to the last
+   complete array element) and re-parse once
+5. Per-item field sanitization (strip non-ASCII tokenizer artifacts from
+   structural fields only; normalize known enum aliases) — applied *after*
+   parsing, *before* validation
+
+Two orderings are non-obvious and must not be swapped:
+
+- **Fence-stripping before parsing.** A fenced payload (```` ```json ... ``` ````)
+  is not valid JSON as-is — parsing before stripping fences always fails,
+  even when the payload inside is perfectly well-formed.
+- **Truncation recovery only after a parse failure, never preemptively.**
+  Most output parses cleanly on the first try; recovery is a fallback that
+  discards data (everything past the last complete element), so it must
+  never run against output that would otherwise have parsed intact.
+
+### Implementation shape
+
+```python
+def _strip_thinking(raw: str) -> str:
+    """Remove <think>…</think> blocks that reasoning models emit.
+
+    Handles complete blocks, orphaned </think> closing tags, and any
+    surrounding whitespace. Called unconditionally on all extraction output.
+    """
+    text = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL)
+    if "</think>" in text:
+        text = text.split("</think>", 1)[1]
+    return text.strip()
+
+
+def _strip_fences(raw: str) -> str:
+    """Remove markdown code fences around a JSON payload."""
+    text = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
+    text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)
+    return text.strip()
+
+
+def _sanitize_json(text: str) -> str:
+    """Remove trailing commas before } or ] (common LLM error)."""
+    return re.sub(r",\s*([\}\]])", r"\1", text)
+
+
+def _truncation_recovery(text: str) -> str:
+    """Salvage a truncated JSON array by closing it at the last complete
+    object boundary.
+
+    When a model hits its max_tokens limit mid-output, the JSON array is cut
+    off somewhere inside an incomplete object. This finds the last '},' or
+    '}' that closes a complete item, discards everything after it, and
+    appends ']' to produce a valid (partial) array.
+
+    Returns the original text unchanged if no recovery boundary is found.
+    """
+    last_close = text.rfind('},')
+    if last_close == -1:
+        last_close = text.rfind('}')
+    if last_close == -1:
+        return text
+    recovered = text[:last_close + 1].rstrip() + '\n]'
+    logger.warning(
+        "Truncated JSON — salvaged array up to char %d (original: %d chars); "
+        "items past truncation point are missing", last_close, len(text),
+    )
+    return recovered
+
+
+def _sanitize_item(
+    obj: dict, structural_fields: set[str], value_aliases: dict[str, dict[str, str]]
+) -> dict:
+    """Strip non-ASCII tokenizer artifacts from a parsed JSON item.
+
+    Keys are always sanitized — field names must be ASCII identifiers.
+    Values are sanitized only for fields listed in `structural_fields` (values
+    that must match known identifiers/enums). Free-form prose fields are left
+    untouched — over-sanitizing legitimate model output corrupts it.
+
+    `value_aliases`: {field_name: {model_shorthand: canonical_value}} — lets
+    known model-specific shorthand (e.g. a smaller model abbreviating an enum
+    value) get normalized before validation instead of failing schema checks.
+    """
+    result = {}
+    for k, v in obj.items():
+        clean_key = re.sub(r'[^\x00-\x7F]', '', k).strip()
+        if clean_key in structural_fields and isinstance(v, str):
+            clean_val = re.sub(r'[^\x00-\x7F]', '', v).strip()
+            aliases = value_aliases.get(clean_key, {})
+            clean_val = aliases.get(clean_val, clean_val)
+            if clean_val != v:
+                logger.warning("Sanitized value of '%s': %r -> %r", clean_key, v, clean_val)
+            result[clean_key] = clean_val
+        else:
+            if clean_key != k:
+                logger.warning("Sanitized non-ASCII key: %r -> %r", k, clean_key)
+            result[clean_key] = v
+    return result
+
+
+def _parse_json_array(raw: str, label: str = "") -> tuple[list[dict], bool]:
+    """Parse extraction-model output into a list of items.
+
+    Returns (items, parse_ok). parse_ok is False on unrecoverable failure
+    AND when truncation recovery was used — callers must treat a recovered
+    result as partial, not a clean success.
+    """
+    cleaned = _strip_thinking(_strip_fences(raw))
+    cleaned = _sanitize_json(cleaned)
+    partial = False
+
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        logger.error("JSON parse failed%s: %s\nRaw (first 1000 chars):\n%s", label, exc, raw[:1000])
+        logger.debug("Full raw output%s:\n%s", label, raw)
+
+        recovered = _truncation_recovery(cleaned)
+        if recovered != cleaned:
+            try:
+                parsed = json.loads(recovered)
+                partial = True
+            except json.JSONDecodeError:
+                return [], False
+        else:
+            return [], False
+
+    if not isinstance(parsed, list):
+        logger.error("Expected a JSON array, got %s", type(parsed).__name__)
+        return [], False
+
+    items = [_sanitize_item(i, STRUCTURAL_FIELDS, VALUE_ALIASES) if isinstance(i, dict) else i for i in parsed]
+    return items, not partial
+```
+
+`structural_fields` and `value_aliases` are supplied per-project — copy the
+*shape* of `_sanitize_item`, not a hardcoded field list.
+
+**Structural vs. free-form fields:** only sanitize values for fields that
+must match a known identifier or enum (`structural_fields`). Never run
+non-ASCII stripping on free-form/prose fields (a rationale, explanation, or
+summary field) — those are legitimate model output, and stripping non-ASCII
+characters from them corrupts the content instead of fixing an error.
 
 ---
 
@@ -230,6 +392,11 @@ throughput fix.
   truncation produces an unparseable payload instead of a clear error
 - **Don't** trust a thinking-suppression flag alone — strip
   `<think>...</think>` from output defensively regardless
+- **Don't** treat a truncation-recovery parse as a clean success — flag it
+  as a partial result so callers know some items are missing
+- **Don't** sanitize free-form/prose fields for non-ASCII content —
+  restrict sanitization to fields that must match known structural or enum
+  values
 - **Don't** reach for the producer/consumer parallel pipeline before the
   two-pass + chunking basics are proven insufficient
 - **Don't** hardcode model names, base URLs, or timeouts in source — always
