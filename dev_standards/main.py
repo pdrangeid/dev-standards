@@ -3,10 +3,12 @@ import logging
 import typer
 from rich.console import Console
 
+from dev_standards.registry.cli import registry_app
 from dev_standards.workspace.cli import workspace_app
 
 app = typer.Typer()
 app.add_typer(workspace_app, name="workspace")
+app.add_typer(registry_app, name="registry")
 console = Console()
 logger = logging.getLogger(__name__)
 

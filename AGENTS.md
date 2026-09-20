@@ -391,10 +391,11 @@ ecosystem. Primary deliverables are two bash scripts and a set of modular AGENTS
 - `claude/base.md` + `claude/modules/*.md` — composable standards content fetched at scaffold time
 - `project-templates/` — reference templates for pyproject.toml, config.yaml, ARCHITECTURE.md, workspace.yaml
 - `dev_standards/workspace/` + `dev-standards workspace new|render|check` — Python CLI that scaffolds and maintains multi-repo Claude Code workspaces from a `workspace.yaml` (see README `## Multi-Repo Workspaces`)
+- `dev_standards/registry/` + `dev-standards registry generate|add|refresh|rollup|check` — generates each repo's `<repo>_registry.yaml` via an LLM CLI and maintains the machine-local `~/.repository_registry/` hub; schema in `docs/registry-schema.md`, consumed by `workspace/registry.py` (see README `## Repo Registry`)
 
 The bash scripts remain the canonical mechanism for project `AGENTS.md`. The Python package is
-otherwise a scaffold-generated stub; the `workspace` module is its only real functionality and is
-additive — it does not replace or wrap the scripts.
+otherwise a scaffold-generated stub; the `workspace` and `registry` modules are its real
+functionality and are additive — they do not replace or wrap the scripts.
 
 ### Key Patterns
 
@@ -403,6 +404,7 @@ additive — it does not replace or wrap the scripts.
 - `refresh-dev-standards.sh` splits on `## Project-Specific` — everything above is replaceable, below is preserved
 - Legacy-state detection: a project with `claude.md` but no `AGENTS.md` (or a `claude.md` header still naming `refresh-claude.sh`) is auto-migrated on the next `refresh-dev-standards.sh` run — see `## Migrating an Older Project` in README.md
 - Module selection: interactive menu or `--modules neo4j,live-exporter` flag
+- Registry: an LLM only *describes* a repo (prompt on stdin, run from an empty temp dir); Python validates and writes. Idempotency is a `generated_from` source-doc hash, not LLM determinism, so unchanged repos cost no LLM call. The workspace consumer contract in `workspace/registry.py` (per-repo dict with `purpose`, aggregate list of `{repo, purpose}`) is locked; the hub needs no consumer changes because symlinks resolve transparently
 - Workspaces: `workspace.yaml` is the source of truth; `render`/`check` share one desired-state plan (`workspace/render.py`), so re-render is idempotent and drift reporting matches render. The workspace `AGENTS.md` is marker-delimited (`<!-- BEGIN/END GENERATED: name -->`), reads the same `claude/` fragments from a local editable checkout, and must not be run through `refresh-dev-standards.sh`. `claude/modules/workspace.md` is deliberately absent from `setup-project.sh`'s module menu
 - Both scripts default `DEV_STANDARDS_RAW` to the `develop` branch (a `main` URL is built but only used if the `develop` line is commented back out manually) — intentional for now so consumers get in-flight standards updates before they're merged to `main`; no `--branch` flag exists yet (see Recommendations)
 
@@ -419,7 +421,8 @@ additive — it does not replace or wrap the scripts.
 - `scripts/setup-project.sh` (Phase 3.5) — `SESSION_TEMPLATE_URL` is hardcoded to `main` while the ADR templates and `AGENTS.md` fetch from `develop`; the two should share `DEV_STANDARDS_RAW` (and the `--branch` flag recommendation)
 - `.mcp.json` rendered by `dev-standards workspace` embeds the absolute workspace path (for `uvx --env-file`), so re-rendering on another machine changes a committed file; a relative `.env` would avoid it but is unverified against Claude Code's MCP working directory
 - `dev_standards/workspace/models.py` `KNOWN_SERVERS` holds the MCP env/tool contract for exactly one package (`neo4j-mcp-server`); adding another server means adding a profile
-- `docs/usage_instructions.md` Commands table and `dev_standards/main.py`'s `run` stub are still placeholders apart from the `workspace` commands
+- `dev_standards/main.py`'s `run` stub is still a placeholder command
+- The user's existing `~/Projects/*_registry.yaml` data has not been migrated into the repos or the hub (misnamed `lkifeos_schemata_registry.yaml`; `lifeos-embeddings`/`lifeos-jobwatch` aggregate-only; `datasource-graph-analyzer` per-repo only), and their hand-run `gemini` scripts fail because the CLI rejects their account tier (see `.session/2026-09-20-repo-registry-generator.md`)
 - `.session/specs/` in this repo does not exist and this repo's own Review Log entries are `- date — text` bullets, not the `**date — Title**` shape `base.md` now prescribes; harmless under the 8-entry cap but will archive verbatim in the old shape
 
 ### Next Steps
@@ -427,12 +430,13 @@ additive — it does not replace or wrap the scripts.
 1. **Test the workspace tool on `cranston-llm`** — the user will run it there (install with `uv pip install -e .[dev]`, copy `project-templates/workspace.yaml.template` to the `lifeos-logwatch-hostops-refactor` folder as `workspace.yaml`, `dev-standards workspace render`, commit with `Session: 2026-09-20-workspace-module`, add the `sudo crontab -l -u llmadmin` note under `## Notes`); fix whatever it turns up. `lifeos-hostops`/`lifeos-logwatch` were never available on pmd-office, so the real-folder regeneration is unverified
 2. **Move or delete historical artifacts** — `claude.md.monolith` and `claude-code-session-starter.md`
 3. **Remove the `rich<14` upper-bound pin** from `pyproject.toml` and the `setup-project.sh` heredoc (see Recommendations)
-4. **Merge `feature/workspace-module`** to `develop` when satisfied (a deliberate human action)
-5. **Add bats/shellspec tests** for `--dry-run` mode — the flag exists precisely to enable testability; the migration and idempotency paths in `refresh-dev-standards.sh` were verified manually this session in a scratch sandbox and against `datasource-graph-analyzer` but have no automated coverage
-6. **Verify AGENTS.md auto-discovery** in Cursor/Windsurf/Cline/Codex before creating any tool-specific bridge file beyond `CLAUDE.md` — deferred from the `AGENTS.md` migration session, still unverified
-7. **Seed `specs/adr/` and `archive/` from `refresh-dev-standards.sh`** — the ADR/Review-Log convention shipped in `base.md` and `setup-project.sh`, but existing projects only get the new text on refresh; the directories/templates are created by the agent on demand, not by the script
-8. **Migrate remaining downstream projects** off `claude.md` — only `datasource-graph-analyzer` has been migrated so far; every other project pulling from this repo still has a legacy `claude.md` until someone runs `refresh-dev-standards.sh` in it
-9. **Convert legacy `[topic]-baseline.md` specs to ADRs** per downstream project, when convenient — deliberately not done in the ADR adoption session
+4. **Adopt the registry on real repos and schedule it** — `dev-standards registry add <repo>` per repo (this regenerates via the LLM; decide whether to seed from the existing `~/Projects` files instead), point `registry_dir` at `~/.repository_registry`, then schedule a weekly `registry refresh` under `run_uv_script.sh`. Point the Mermaid flowchart script at the hub's `registry.yaml`
+5. **Merge `feature/repo-registry-generator`** to `develop` when satisfied (a deliberate human action)
+6. **Add bats/shellspec tests** for `--dry-run` mode — the flag exists precisely to enable testability; the migration and idempotency paths in `refresh-dev-standards.sh` were verified manually this session in a scratch sandbox and against `datasource-graph-analyzer` but have no automated coverage
+7. **Verify AGENTS.md auto-discovery** in Cursor/Windsurf/Cline/Codex before creating any tool-specific bridge file beyond `CLAUDE.md` — deferred from the `AGENTS.md` migration session, still unverified
+8. **Seed `specs/adr/` and `archive/` from `refresh-dev-standards.sh`** — the ADR/Review-Log convention shipped in `base.md` and `setup-project.sh`, but existing projects only get the new text on refresh; the directories/templates are created by the agent on demand, not by the script
+9. **Migrate remaining downstream projects** off `claude.md` — only `datasource-graph-analyzer` has been migrated so far; every other project pulling from this repo still has a legacy `claude.md` until someone runs `refresh-dev-standards.sh` in it
+10. **Convert legacy `[topic]-baseline.md` specs to ADRs** per downstream project, when convenient — deliberately not done in the ADR adoption session
 
 ### Architectural Notes
 
@@ -458,3 +462,7 @@ additive — it does not replace or wrap the scripts.
 **2026-09-20 — Multi-repo workspace module**
 
 Completed `.session/2026-09-20-dev-standards-workspace-module.md` except its steps 9–11, which the user will run on `cranston-llm` (the workspace folder and `lifeos-hostops`/`lifeos-logwatch` were not on the session's machine). Added `dev-standards workspace new|render|check` (`dev_standards/workspace/`, Pydantic model for `workspace.yaml`, marker-region `AGENTS.md`, merge-rendered `.claude/settings.local.json`, drift check sharing one plan with render), `claude/modules/workspace.md`, `project-templates/workspace.yaml.template`, and 37 pytest tests. The handoff's assumption that a Python composition mechanism already existed was wrong — composition was bash-only — so the module reads the same `claude/` fragments from a local checkout; the bash scripts stay canonical and nothing was migrated (confirmed with the user). Verified the Neo4j MCP details against PyPI and neo4j/mcp v1.6.0: package `neo4j-mcp-server` pinned at 1.6.0, canonical `NEO4J_MCP_*` env vars, write tool `write-cypher` (deny rule `mcp__neo4j__write-cypher`); registry YAMLs live beside the repos in `~/Projects/` with a `purpose` field, so `workspace.yaml` gained an optional `registry_dir`. Also fixed `pyproject.toml` (`dev_Standards` casing, entry point, deps). Removed a stale Tech Debt item: `coverage.xml`/`htmlcov/` are already untracked and gitignored.
+
+**2026-09-20 — Repo registry generator**
+
+Completed `.session/2026-09-20-repo-registry-generator.md`. Added `dev-standards registry generate|add|refresh|rollup|check` (`dev_standards/registry/`), `docs/registry-schema.md`, and 47 tests (84 total). It builds the missing producer side of the registry that `workspace/registry.py` consumes: per-repo files are overwritten (never appended), a `generated_from` hash of the source docs makes a re-run a true no-op without an LLM call, and LLM output is validated before anything is written. The machine-local `~/.repository_registry/` symlink hub (confirmed with the user) makes every repo's registry discoverable in one place with no change to the locked consumer contract; the hub's symlinks are the repo list and `refresh` (the weekly job; schedule documented, not installed) continues past per-repo failures. Smoke-tested with a real LLM on a scratch copy of this repo's docs; a smoke test also found that headless `gemini` refuses untrusted directories, so the LLM now runs from an empty temp dir, and that the `gemini` CLI is rejected for the user's account tier, so the default LLM command is `claude -p` (override via `--llm-cmd`). Also fixed the earlier workspace CLI's logger name to satisfy Logging Contract rule 1. Existing `~/Projects` registry data was not migrated (see Tech Debt).

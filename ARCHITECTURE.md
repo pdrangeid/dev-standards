@@ -45,6 +45,10 @@ disagree, and a second render is a no-op.
 | `workspace/registry.py` | Repo descriptions | `<repo>_registry.yaml` then aggregate `registry.yaml`, field `purpose` |
 | `workspace/render.py` | Desired-state engine | Pure plan; marker-region merge; `settings.local.json` merge; plan → apply / diff |
 | `workspace/cli.py` | `workspace new/render/check` | `new` validates first, then git init, render, session template, commit |
+| `registry/models.py` | Registry file schema | Pydantic `RepoEntry` (`repo`, `purpose` required); lenient list coercion; deterministic YAML |
+| `registry/generate.py` | Produce one repo's registry file | Prompt on stdin to an LLM CLI run from an empty temp dir; validate before write; `generated_from` hash skips unchanged repos |
+| `registry/hub.py` | Machine-local hub | One symlink per repo in `~/.repository_registry/`; generated `registry.yaml` rollup; conflict guards |
+| `registry/cli.py` | `registry generate/add/refresh/rollup/check` | `refresh` continues past per-repo failures, exits 1 on any |
 
 ## Directory Structure
 
@@ -52,11 +56,13 @@ disagree, and a second render is a no-op.
 dev-standards/
 ├── dev_standards/
 │   ├── main.py
-│   └── workspace/           # models, fragments, registry, render, cli
+│   ├── workspace/           # models, fragments, registry (consumer), render, cli
+│   └── registry/            # models, generate, hub, cli (the producer side)
 ├── claude/                  # fragment library (base, modules/, templates)
 ├── scripts/                 # setup-project.sh, refresh-dev-standards.sh
 ├── project-templates/       # pyproject / config / ARCHITECTURE / workspace.yaml templates
 ├── docs/
-│   └── usage_instructions.md
+│   ├── usage_instructions.md
+│   └── registry-schema.md
 └── tests/                   # workspace models, render, and CLI tests
 ```

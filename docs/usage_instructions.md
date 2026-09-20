@@ -18,10 +18,19 @@ dev-standards workspace check ~/workspaces/my-effort --debug
 | `dev-standards workspace new <path>` | `--from workspace.yaml` (required), `--no-commit`, `--fragments-dir`, `--debug` | Validate the yaml, create the folder, `git init`, render, copy `.session/_template.md`, make the first commit |
 | `dev-standards workspace render [<path>]` | `--fragments-dir`, `--debug` | Re-render generated files after editing `workspace.yaml`; hand-written `AGENTS.md` sections and unrelated `settings.local.json` keys are preserved |
 | `dev-standards workspace check [<path>]` | `--fragments-dir`, `--debug` | Validate the yaml and report drift between it and the rendered files; exits 1 on drift |
+| `dev-standards registry generate [<path>]` | `--llm-cmd`, `--force`, `--debug` | Generate or refresh `<repo>_registry.yaml` at the repo root (no LLM call if the source docs are unchanged) |
+| `dev-standards registry add [<path>]` | `--hub`, `--llm-cmd`, `--no-generate`, `--force`, `--debug` | Register a repo in the hub: generate its file if missing, symlink it, rebuild the rollup |
+| `dev-standards registry refresh` | `--hub`, `--llm-cmd`, `--force`, `--debug` | Regenerate every linked repo (skipping unchanged), then the rollup; exits 1 if any repo failed |
+| `dev-standards registry rollup` | `--hub`, `--debug` | Rebuild the hub's `registry.yaml` from the linked files |
+| `dev-standards registry check` | `--hub`, `--debug` | Validate every hub file against the schema and report rollup drift; exits 1 on problems |
 
-`path` defaults to the current directory. Fragments are read from the local `claude/`
-directory of an editable install, or from `--fragments-dir` / `$DEV_STANDARDS_CLAUDE_DIR`.
-See `README.md` (`## Multi-Repo Workspaces`) for the workflow and what is safe to hand-edit.
+`path` defaults to the current directory. Workspace fragments are read from the local
+`claude/` directory of an editable install, or from `--fragments-dir` /
+`$DEV_STANDARDS_CLAUDE_DIR`. The registry LLM command is `--llm-cmd` /
+`$DEV_STANDARDS_REGISTRY_LLM_CMD` (default `claude -p`); the hub is `--hub` /
+`$DEV_STANDARDS_REGISTRY_HUB` (default `~/.repository_registry`).
+See `README.md` (`## Multi-Repo Workspaces`, `## Repo Registry`) for the workflows, and
+`docs/registry-schema.md` for the registry file contract.
 
 ## Configuration
 

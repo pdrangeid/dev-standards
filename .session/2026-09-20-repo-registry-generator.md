@@ -4,7 +4,7 @@
 Date: 2026-09-20
 Repo: dev-standards
 Branch: feature/repo-registry-generator
-Status: draft
+Status: complete
 
 ---
 
@@ -202,4 +202,71 @@ from 'deps'; note shared 'contracts'; no circular logic unless explicit."
 
 ## Decisions Made This Session
 
-_None yet._
+### Confirmed with the user (step 3)
+- **Cadence:** weekly `registry refresh` is the source of truth; `generate`/`add` are available
+  on demand and nothing is mandatory at session close. The schedule is *documented only* — no
+  cron/Routine was installed (that is a separate explicit ask).
+- **Discovery layout:** the machine-local `~/.repository_registry/` symlink hub, replacing the
+  `~/Projects` example in `workspace.yaml.template`. The hub is never git-tracked (the real data
+  lives in each repo). `registry.py` and `_require_absolute` are untouched; `registry_dir` in a
+  workspace.yaml must still be an absolute path, e.g. `/home/YOUR_USERNAME/.repository_registry`.
+- **Repo list (an added decision, also confirmed):** the hub's symlinks *are* the list.
+  `registry add <path>` joins a repo; `refresh` iterates the symlinks. No separate list file.
+
+### Decisions made while building
+- **Generator lives in Python** (`dev_standards/registry/`, sub-app `dev-standards registry`),
+  not a `scripts/*.sh`. Same reasoning as the workspace module: it validates LLM output against
+  a schema, manages symlinks and rewrites a rollup — structured-data work that is fragile in
+  bash. It shells out to an LLM CLI from Python, so the bash-style argument for `scripts/` (it
+  calls `gemini`) does not hold. Additive; the bash scripts are unchanged.
+- **Idempotency comes from a source hash, not LLM determinism.** An LLM will not phrase things
+  the same way twice, so "run twice, no diff" cannot mean "call twice". Each file records
+  `generated_from: sha256:<hash of the source docs + prompt version>`; when it matches, the LLM is
+  not called and nothing is written. A hand edit therefore survives until a source doc changes.
+  `--force` overrides. Bump `PROMPT_VERSION` to regenerate everything after a prompt change.
+- **The LLM only describes; Python writes.** The prompt goes on stdin and the reply is validated
+  before anything is written, so a failed/malformed reply never touches an existing file (tested
+  by mutation). `repo` is forced from the directory name, never taken from the model; unknown
+  keys the model adds are dropped.
+- **LLM runs from an empty temp directory, never the repo.** Found by smoke test: headless
+  `gemini` refuses untrusted directories (exit 55). `--skip-trust` inside each repo would have
+  bypassed a guard against repo-local tool config; running from an empty temp dir removes the
+  need (the prompt is self-contained).
+- **Default LLM command is `claude -p`, not `gemini`.** The `gemini` CLI is rejected for this
+  user's account tier (`IneligibleTierError: no longer supported for Gemini Code Assist for
+  individuals… migrate to Antigravity`), so the session's gemini default would fail on first use.
+  Override with `--llm-cmd` or `$DEV_STANDARDS_REGISTRY_LLM_CMD`. **The user's own hand-run
+  `gemini "Analyze @README.md…"` and flowchart scripts will hit the same error.** Note the weekly
+  job would spend the user's Claude usage for repos whose docs changed.
+- **Schema adds `repo` as required** on the per-repo file. The session's schema block omitted it,
+  but every existing per-repo file already carries it and the rollup keys on it. `generated_from`
+  is the only new field. `extra` keys are rejected on load; list fields accept a scalar or null.
+- **Per-repo files are dicts; the rollup is a generated list** — exactly the shapes
+  `lookup_purpose` reads (verified by tests that call the real `lookup_purpose` through hub
+  symlinks and through the rollup alone). Rollup entries omit `generated_from`, are sorted by
+  `repo`, and skip (and report) schema-invalid or broken-link files.
+- **Logging Contract fix in the earlier workspace CLI:** `workspace/cli.py` used
+  `getLogger("workspace")`, violating rule 1 (root logger = package name). It now uses
+  `__name__`. Shared setup moved to `dev_standards/logging_setup.py`. `registry` commands emit the
+  plain `SUMMARY action=... ` line (rule 5); `refresh` exits 1 on any failure so a scheduler sees it.
+- **`refresh` never stops at one bad repo:** it collects failures, still rebuilds the rollup,
+  reports at the end and exits 1 (Error Handling standard).
+
+### Verification
+- 84 tests pass (47 new): schema, generator, hub, CLI. Ruff and black clean.
+- Mutation checks: removing the hash skip fails 3 tests; writing before validating fails 4.
+- Real LLM smoke test (`claude -p`) on a scratch copy of this repo's docs — not any LifeOS
+  repo: file generated and valid in ~12s; a second `refresh` took 0.17s and left both files
+  byte-identical; `registry check` passed; `lookup_purpose` read it through the hub symlink.
+- The real `gemini` path could not be tested (account tier rejected, above).
+
+### Not done / for the user
+- **Existing registry data is untouched** (out of scope): `~/Projects/*_registry.yaml` and the
+  9-entry `registry.yaml` still live outside the repos. Migrating means `registry add` per repo
+  (which regenerates via the LLM) or moving the files in by hand. Known gaps: the file for
+  `lifeos-schemata` is misnamed `lkifeos_schemata_registry.yaml` (lookup only finds it through
+  the aggregate); `lifeos-embeddings` and `lifeos-jobwatch` exist only in the aggregate;
+  `datasource-graph-analyzer` only as a per-repo file.
+- The user's Mermaid flowchart script should read `~/.repository_registry/registry.yaml`; it and
+  its LLM (gemini) were not touched.
+- No cron/Routine installed. Run the weekly `registry refresh` under `run_uv_script.sh`.
