@@ -1,7 +1,7 @@
 # Session Handoff: dev-standards workspace module
 
 - **Date:** 2026-09-20
-- **Status:** active
+- **Status:** complete
 - **Origin surface:** claude.ai web chat (strategy discussion)
 - **Target surface:** Claude Code in `dev-standards` on `cranston-llm`
 - **Repos in scope:** `dev-standards` (implementation). Read-only reference: the existing `lifeos-logwatch-hostops-refactor` workspace folder, which becomes the first instance.
@@ -210,11 +210,16 @@ dev-standards workspace check [<path>]                     # validate yaml; repo
   `llm`, `live-exporter`, `manifest-analyzer`, `ast-analyzer`.
 
 ### Decisions
-- **Composition is reimplemented in Python over the same fragment files** (`dev_standards/workspace/fragments.py`),
-  read from a local checkout rather than GitHub. The bash mechanism cannot do marker regions or
-  templating, and cannot be reused from Python; the *content* (base.md + modules) is shared, so
-  core improvements still flow into workspaces on re-render. The checkout must be installed
-  editable; `--fragments-dir` / `DEV_STANDARDS_CLAUDE_DIR` override.
+- **The bash scripts stay canonical for project `AGENTS.md`; nothing is being migrated to
+  Python.** The handoff assumed a Python composition mechanism and CLI already existed; neither
+  did (see above). The workspace tool is a *separate, additive* Python module
+  (`dev_standards/workspace/`) that reads the same `claude/` fragment files from a local checkout
+  (`fragments.py`) instead of over GitHub. Python was kept because the job is structured-data
+  work (yaml validation, JSON merge, marker-region replacement, drift check) that is fragile in
+  bash and needs `yq`/`jq`. The two paths share content, not code, so core improvements still
+  reach workspaces on re-render. The checkout must be installed editable;
+  `--fragments-dir` / `DEV_STANDARDS_CLAUDE_DIR` override. Confirmed with the user 2026-09-20
+  after they questioned the Python assumption.
 - **Fragment names:** `standards.modules: [neo4j]` replaces the handoff's `standards.fragments:
   [core, python, neo4j, workspace]`. `base` (= core + python) and `workspace` are implicit and
   rejected if listed.
@@ -261,8 +266,9 @@ dev-standards workspace check [<path>]                     # validate yaml; repo
 - End-to-end: `workspace new` against 4 real repos in `~/develop` with the real registry dir
   produced a committed workspace with zero drift on `check`.
 
-### Blocked — steps 9, 10, 11 (not done)
-This session ran on **pmd-office**, not `cranston-llm`. `/home/pdrangeid/workspaces/` (and the
+### Deferred to the user — steps 9, 10, 11 (not done here)
+Per the user, they will test on `cranston-llm` after this session and return with any issues; the
+existing workspace is not regenerated from here. This session ran on **pmd-office**, not `cranston-llm`. `/home/pdrangeid/workspaces/` (and the
 `workstpaces` variant) does not exist here, and neither `lifeos-hostops` nor `lifeos-logwatch`
 is under `~/develop` or `~/Projects`, so `load_workspace` correctly refuses the yaml. The
 handoff's `.env`/existing-config fixes (database, `workstpaces` typo, single scheme, pin, deny,
@@ -273,3 +279,5 @@ folder as `workspace.yaml` (adjust `repos_root`/`registry_dir`), move the existi
 or run `render` in it, `git init` if needed, commit with trailer
 `Session: 2026-09-20-workspace-module`, and add the `sudo crontab -l -u llmadmin` note (step 11)
 under `## Notes` in that workspace's `AGENTS.md`.
+
+**Session closed 2026-09-20**; `AGENTS.md` Review Log, Next Steps and Tech Debt updated.
