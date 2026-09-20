@@ -346,15 +346,23 @@ run git -C "$PROJECT_DIR" add -f output/.gitkeep 2>/dev/null || true
 run touch "$PROJECT_DIR/requirements.txt"
 echo "✅ Directory structure created"
 
+# --- dev-standards fetch source (shared by Phase 3.5 templates and AGENTS.md) ---
+DEV_STANDARDS_RAW_MAIN="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
+DEV_STANDARDS_RAW_DEV="https://raw.githubusercontent.com/pdrangeid/dev-standards/develop/claude"
+DEV_STANDARDS_RAW="$DEV_STANDARDS_RAW_DEV"  # default to develop branch for latest updates
+
 # --- Phase 3.5: Session Directory --------------------------------------------
 echo "--- Phase 3.5: Session Directory (.session/) ---"
  
 SESSION_DIR="$PROJECT_DIR/.session"
 SPECS_DIR="$SESSION_DIR/specs"
+ADR_DIR="$SPECS_DIR/adr"
+ARCHIVE_DIR="$SESSION_DIR/archive"
 SESSION_TEMPLATE_URL="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude/session-template.md"
  
 run mkdir -p "$SESSION_DIR"
-run mkdir -p "$SPECS_DIR"
+run mkdir -p "$ADR_DIR"
+run mkdir -p "$ARCHIVE_DIR"
  
 # Fetch the canonical session template from dev-standards
 if [ "$DRY_RUN" = false ]; then
@@ -376,7 +384,7 @@ One paragraph — what should exist at the end of this session.
 ## Context & Constraints
 - **Decision**: [locked decisions Claude should not revisit]
 - **Out of scope**: [explicit exclusions]
-- **Reference files**: [.session/specs/ files to read first]
+- **Reference files**: [.session/specs/adr/ ADRs or other files to read first]
  
 ## Relevant Specs / Schemas / Examples
 [Paste schemas, data shapes, code samples here]
@@ -390,24 +398,38 @@ _None yet._
 SESSIONSTUB
     fi
  
-    # specs/ README so the folder isn't an empty mystery
-    cat > "$SPECS_DIR/README.md" << 'SPECSREADME'
-# .session/specs/
- 
-Durable, promoted architectural decisions for this project.
- 
-Files here are promoted from completed session files when decisions are locked.
-They serve as reference material for future Claude Code sessions — not instructions.
- 
-Naming convention: `[topic]-baseline.md` or `[topic]-decisions.md`
-SPECSREADME
- 
+    # ADR template + index — fetched from dev-standards (develop, same as AGENTS.md)
+    if curl -fsSL "${DEV_STANDARDS_RAW}/adr-template.md" -o "$ADR_DIR/_template.md" 2>/dev/null; then
+        echo "  ✅ Fetched specs/adr/_template.md from dev-standards"
+    else
+        rm -f "$ADR_DIR/_template.md"
+        echo "  ⚠️  Could not fetch ${DEV_STANDARDS_RAW}/adr-template.md — copy it into $ADR_DIR/_template.md manually"
+    fi
+
+    if curl -fsSL "${DEV_STANDARDS_RAW}/adr-index-template.md" -o "$ADR_DIR/index.md" 2>/dev/null; then
+        echo "  ✅ Fetched specs/adr/index.md from dev-standards"
+    else
+        echo "  ⚠️  Could not fetch adr-index-template.md — writing minimal local index"
+        cat > "$ADR_DIR/index.md" << 'ADRINDEXSTUB'
+# Architecture Decision Records — Index
+
+| # | Title | Status | Date |
+|---|---|---|---|
+ADRINDEXSTUB
+    fi
+
+    # archive/ is created on demand by the Review Log rotation rule; keep the dir tracked
+    touch "$ARCHIVE_DIR/.gitkeep"
+
     echo "✅ .session/ directory created"
-    echo "   • .session/_template.md  — copy this to start a new session"
-    echo "   • .session/specs/        — promote locked decisions here after sessions"
+    echo "   • .session/_template.md          — copy this to start a new session"
+    echo "   • .session/specs/adr/            — numbered ADRs (template + index) for durable decisions"
+    echo "   • .session/archive/              — Review Log entries rotated out of AGENTS.md"
 else
     echo "  [DRY-RUN] Would create: $SESSION_DIR/_template.md"
-    echo "  [DRY-RUN] Would create: $SPECS_DIR/README.md"
+    echo "  [DRY-RUN] Would create: $ADR_DIR/_template.md"
+    echo "  [DRY-RUN] Would create: $ADR_DIR/index.md"
+    echo "  [DRY-RUN] Would create: $ARCHIVE_DIR/.gitkeep"
 fi
 echo ""
 
@@ -682,9 +704,6 @@ echo "✅ .gitignore created"
 
 # AGENTS.md — fetch base + modules from dev-standards, append Project-Specific stub
 echo "Generating AGENTS.md..."
-DEV_STANDARDS_RAW_MAIN="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
-DEV_STANDARDS_RAW_DEV="https://raw.githubusercontent.com/pdrangeid/dev-standards/develop/claude"
-DEV_STANDARDS_RAW="$DEV_STANDARDS_RAW_DEV"  # default to develop branch for latest updates
 AGENTS_MD="$PROJECT_DIR/AGENTS.md"
 CLAUDE_MD="$PROJECT_DIR/CLAUDE.md"
 FETCH_FAILED=false

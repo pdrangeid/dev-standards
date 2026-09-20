@@ -271,10 +271,27 @@ implementation sessions (Claude Code).
 ```
 .session/
 ├── _template.md                  # canonical template — do not edit, copy to create sessions
-├── specs/                        # durable, promoted decisions (always tracked)
-│   └── [topic]-baseline.md       # locked architectural decisions, schemas, contracts
+├── specs/
+│   └── adr/                      # durable decisions, one numbered ADR per file (always tracked)
+│       ├── index.md              # table: number, title, status, date — the fast lookup path
+│       ├── _template.md          # ADR template — do not edit, copy to create ADRs
+│       └── NNNN-short-title.md   # e.g. 0001-two-pass-llm-split.md
+├── archive/
+│   └── review-log-YYYY.md        # Review Log entries rotated out of AGENTS.md (created on demand)
 └── YYYY-MM-DD-[topic].md         # active or archived session files (tracked)
 ```
+
+**ADR rules**
+- One decision per file, numbered sequentially. Numbers are permanent — never reused,
+  never renumbered. Supersession is a status change on the old file
+  (`Status: superseded by ADR-0012`), never a deletion.
+- `index.md` is the lookup path: an agent should be able to answer "did we already
+  decide this?" from the table alone, and open an ADR only for its full rationale.
+- Copy `_template.md` to create an ADR. If `specs/adr/` is missing (older project),
+  create it from `claude/adr-template.md` and `claude/adr-index-template.md` in
+  dev-standards.
+- ADRs are for durable/architectural decisions. Routine fixes and minor refactors
+  belong in the Review Log only.
 
 ### Starting a Claude Code Session
 
@@ -282,7 +299,8 @@ At the start of every session, before touching any code:
 
 1. Read `AGENTS.md` (always)
 2. Check for a session file: `ls .session/` — if a dated `.md` file exists and is `Status: active`, read it
-3. Read any `specs/` files referenced in the session file
+3. Skim `specs/adr/index.md` if it exists; open only the ADRs the session file
+   references or that the index shows are relevant (skip `superseded`/`deprecated`)
 4. Confirm your understanding of the **Goal** and **Constraints** before proceeding
 
 If no session file exists, ask the user if there's a session to load or proceed with
@@ -299,18 +317,44 @@ their in-chat instructions.
 When the user signals the session is complete:
 
 1. Update `Status:` to `complete` in the session file
-2. Identify any decisions that should be promoted to `specs/` or `AGENTS.md`
-3. Offer to move durable decisions to the right location
-4. **Update `AGENTS.md`:**
-   - Append a one-paragraph entry to the **Review Log** covering what was built,
-     what changed, and any bugs fixed
+2. Identify any decisions that should be promoted to an ADR (durable/architectural)
+   or to `AGENTS.md` (conventions every session must know)
+3. Offer to write them: each durable decision gets a new numbered file in
+   `specs/adr/` copied from `_template.md` — not a freeform addition to a baseline doc
+4. Append each new ADR to `specs/adr/index.md`; if it supersedes an earlier ADR,
+   update that ADR's `Status:` line and its index row
+5. **Update `AGENTS.md`:**
+   - Append an entry to the **Review Log**. Shape: `**YYYY-MM-DD — Title**` followed
+     by one paragraph covering what was built, what changed, and any bugs fixed.
+     When the underlying decision has its own ADR, write a short pointer instead of
+     re-describing it (e.g. "See ADR-0012 for the two-pass split rationale.");
+     prose-only entries remain right for routine fixes and minor refactors
    - Update **Next Steps** to reflect current state — remove completed items,
      add newly unblocked ones
    - Update **Technical Debt** if new deferred items were identified
-5. Follow the standard Session Close Checklist (docs, deps, commit)
-6. if the  `### Review Log` section of `AGENTS.md` exceeds 10 entries, archive all but the 5 most recent to `/CHANGELOG.md` (append, don't overwrite), then remove the archived entries from `AGENTS.md`
+6. Rotate the Review Log (see below) if it now exceeds 8 entries
+7. Follow the standard Session Close Checklist (docs, deps, commit)
 
-> `AGENTS.md` must be updated in the same commit as the session file closure.
+#### Review Log rotation
+
+The Review Log in `AGENTS.md` is a bounded, recent-entries-only list — not the
+project history. Keep it short: `AGENTS.md` is loaded into every session, and
+longer files reduce instruction adherence.
+
+- Cap: **8** most recent entries live in `AGENTS.md`.
+- If adding an entry leaves more than 8, move the oldest entries out until 8
+  remain (all of the overflow, not just one — a log that was already over the cap
+  drains in one pass).
+- Move entries **verbatim** — same heading, same paragraph, no reformatting — by
+  appending them, oldest first, to `.session/archive/review-log-<year>.md`.
+- `<year>` is the year in the entry's own date, not the year of archiving; a batch
+  that spans years is split across the matching files.
+- If that file doesn't exist, create it with the header `# Review Log Archive — <year>`.
+- Never archive Review Log entries to `CHANGELOG.md`. It is a release-facing
+  artifact in a different format for a different audience, and is not touched here.
+
+> `AGENTS.md` must be updated in the same commit as the session file closure
+> (including any ADR, index, and archive-file changes from the steps above).
 > It is the living contract read at the start of every future session — if it
 > drifts, every subsequent session starts with stale context.
 

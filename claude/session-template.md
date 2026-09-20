@@ -22,7 +22,7 @@ Be specific about the deliverable — a working module, a passing test, a commit
 - **Decision**: _example: ExtractionPayload is the cross-repo contract — do not change its shape_
 - **Decision**: _example: No direct Neo4j writes from this repo — all writes via lifeos-mcp_
 - **Out of scope**: _example: Do not touch entity resolver in this session_
-- **Reference files**: _list any .session/specs/ or other files Claude should read first_
+- **Reference files**: _list any .session/specs/adr/ ADRs or other files Claude should read first_
 
 ---
 

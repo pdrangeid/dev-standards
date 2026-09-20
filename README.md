@@ -152,6 +152,9 @@ dev-standards/
 ├── claude/
 │   ├── HEADER.md            # Auto-gen comment block template
 │   ├── base.md              # Universal Python standards (always included)
+│   ├── session-template.md  # Copied to .session/_template.md in new projects
+│   ├── adr-template.md      # Copied to .session/specs/adr/_template.md in new projects
+│   ├── adr-index-template.md # Copied to .session/specs/adr/index.md in new projects
 │   └── modules/
 │       ├── neo4j.md
 │       ├── manifest-analyzer.md

@@ -84,6 +84,41 @@ uv run python -m <package>.main <command> --flag value --debug
 
 ---
 
+## Logging Contract (Inter-Tool)
+
+Any tool whose stdout/stderr is captured to a log file that another tool parses
+must satisfy these five rules. They are a **machine-parse contract, not a style
+guide** — `lifeos-jobwatch` reads the four nightly cron logs into a run/issue
+model and its parser depends on them. Rules 1 and 5 exist because of specific
+measured fragility; see
+`lifeos-jobwatch/.session/2026-09-02-jobwatch-pre-freeze-golden-census-logging-contract.md`.
+
+1. **Root logger name equals the distribution package name, with underscores.**
+   `logging.getLogger(__name__)` from a module inside `lifeos_mcp/` satisfies
+   this. The root segment is a durable identifier — renaming it is a breaking
+   change requiring a graph migration, the same as renaming a node label.
+2. **Every scheduled job runs under the `run_uv_script.sh` wrapper**, so its log
+   carries `>>> Executing <script> at <when>` and
+   `<<< Finished <script> rc=<n> duration_sec=<n> at <when>`. The footer is
+   authoritative for run status and makes per-job terminator markers unnecessary.
+3. **Level semantics.** `WARNING` = degraded but the run continues.
+   `ERROR` = a unit of work failed. `CRITICAL` / uncaught = the run is dead.
+   These drive `warn_count` / `error_count` and downstream event caps (ERROR is
+   never capped), so inflating a warning to an error has direct graph cost.
+4. **Timestamp format is `%Y-%m-%d %H:%M:%S,%f`, host-local**, matching the
+   current `PYLOG` grammar. Structured / JSON logging is a welcome future change
+   but is a new parse branch, not a drop-in — coordinate it with the consuming
+   tool.
+5. **Any rich summary table must be accompanied by a plain log line carrying the
+   same values**, e.g.
+   `[INFO] lifeos_mcp.tools.ingest: SUMMARY nodes=412 rels=1180 status=partial`.
+   Box-drawing table parsing is the most fragile path in a log reader and is
+   often the only structured-data path out of these tools — a redundant text
+   line demotes it from load-bearing to convenience. This is the single
+   highest-value rule in the list.
+
+---
+
 ## Error Handling
 
 - Never let a single bad record crash the whole run — catch, log, continue
@@ -240,10 +275,27 @@ implementation sessions (Claude Code).
 ```
 .session/
 ├── _template.md                  # canonical template — do not edit, copy to create sessions
-├── specs/                        # durable, promoted decisions (always tracked)
-│   └── [topic]-baseline.md       # locked architectural decisions, schemas, contracts
+├── specs/
+│   └── adr/                      # durable decisions, one numbered ADR per file (always tracked)
+│       ├── index.md              # table: number, title, status, date — the fast lookup path
+│       ├── _template.md          # ADR template — do not edit, copy to create ADRs
+│       └── NNNN-short-title.md   # e.g. 0001-two-pass-llm-split.md
+├── archive/
+│   └── review-log-YYYY.md        # Review Log entries rotated out of AGENTS.md (created on demand)
 └── YYYY-MM-DD-[topic].md         # active or archived session files (tracked)
 ```
+
+**ADR rules**
+- One decision per file, numbered sequentially. Numbers are permanent — never reused,
+  never renumbered. Supersession is a status change on the old file
+  (`Status: superseded by ADR-0012`), never a deletion.
+- `index.md` is the lookup path: an agent should be able to answer "did we already
+  decide this?" from the table alone, and open an ADR only for its full rationale.
+- Copy `_template.md` to create an ADR. If `specs/adr/` is missing (older project),
+  create it from `claude/adr-template.md` and `claude/adr-index-template.md` in
+  dev-standards.
+- ADRs are for durable/architectural decisions. Routine fixes and minor refactors
+  belong in the Review Log only.
 
 ### Starting a Claude Code Session
 
@@ -251,7 +303,8 @@ At the start of every session, before touching any code:
 
 1. Read `AGENTS.md` (always)
 2. Check for a session file: `ls .session/` — if a dated `.md` file exists and is `Status: active`, read it
-3. Read any `specs/` files referenced in the session file
+3. Skim `specs/adr/index.md` if it exists; open only the ADRs the session file
+   references or that the index shows are relevant (skip `superseded`/`deprecated`)
 4. Confirm your understanding of the **Goal** and **Constraints** before proceeding
 
 If no session file exists, ask the user if there's a session to load or proceed with
@@ -268,18 +321,44 @@ their in-chat instructions.
 When the user signals the session is complete:
 
 1. Update `Status:` to `complete` in the session file
-2. Identify any decisions that should be promoted to `specs/` or `AGENTS.md`
-3. Offer to move durable decisions to the right location
-4. **Update `AGENTS.md`:**
-   - Append a one-paragraph entry to the **Review Log** covering what was built,
-     what changed, and any bugs fixed
+2. Identify any decisions that should be promoted to an ADR (durable/architectural)
+   or to `AGENTS.md` (conventions every session must know)
+3. Offer to write them: each durable decision gets a new numbered file in
+   `specs/adr/` copied from `_template.md` — not a freeform addition to a baseline doc
+4. Append each new ADR to `specs/adr/index.md`; if it supersedes an earlier ADR,
+   update that ADR's `Status:` line and its index row
+5. **Update `AGENTS.md`:**
+   - Append an entry to the **Review Log**. Shape: `**YYYY-MM-DD — Title**` followed
+     by one paragraph covering what was built, what changed, and any bugs fixed.
+     When the underlying decision has its own ADR, write a short pointer instead of
+     re-describing it (e.g. "See ADR-0012 for the two-pass split rationale.");
+     prose-only entries remain right for routine fixes and minor refactors
    - Update **Next Steps** to reflect current state — remove completed items,
      add newly unblocked ones
    - Update **Technical Debt** if new deferred items were identified
-5. Follow the standard Session Close Checklist (docs, deps, commit)
-6. if the  `### Review Log` section of `AGENTS.md` exceeds 10 entries, archive all but the 5 most recent to `/CHANGELOG.md` (append, don't overwrite), then remove the archived entries from `AGENTS.md`
+6. Rotate the Review Log (see below) if it now exceeds 8 entries
+7. Follow the standard Session Close Checklist (docs, deps, commit)
 
-> `AGENTS.md` must be updated in the same commit as the session file closure.
+#### Review Log rotation
+
+The Review Log in `AGENTS.md` is a bounded, recent-entries-only list — not the
+project history. Keep it short: `AGENTS.md` is loaded into every session, and
+longer files reduce instruction adherence.
+
+- Cap: **8** most recent entries live in `AGENTS.md`.
+- If adding an entry leaves more than 8, move the oldest entries out until 8
+  remain (all of the overflow, not just one — a log that was already over the cap
+  drains in one pass).
+- Move entries **verbatim** — same heading, same paragraph, no reformatting — by
+  appending them, oldest first, to `.session/archive/review-log-<year>.md`.
+- `<year>` is the year in the entry's own date, not the year of archiving; a batch
+  that spans years is split across the matching files.
+- If that file doesn't exist, create it with the header `# Review Log Archive — <year>`.
+- Never archive Review Log entries to `CHANGELOG.md`. It is a release-facing
+  artifact in a different format for a different audience, and is not touched here.
+
+> `AGENTS.md` must be updated in the same commit as the session file closure
+> (including any ADR, index, and archive-file changes from the steps above).
 > It is the living contract read at the start of every future session — if it
 > drifts, every subsequent session starts with stale context.
 
@@ -336,6 +415,8 @@ real functionality and is not the actual product of this repo.
 - `project-templates/ARCHITECTURE.md.template` — pre-fills manifest-analyzer directory structure (models/, parsers/, exporters/), too opinionated for a generic scaffold
 - Two template systems exist with no sync mechanism: `project-templates/*.template` (Jinja-style `{{}}`) and heredocs in `setup-project.sh` (bash `${}`) — content has drifted between them
 - `refresh-dev-standards.sh`'s migration path only knows about the `claude.md`/`AGENTS.md`/`CLAUDE.md` triplet — a project with an existing symlink pointing at `claude.md` (e.g. a hand-rolled `GEMINI.md -> claude.md`, seen in `datasource-graph-analyzer`) is left dangling after migration and must be repointed manually. Not generalized into the script; worth revisiting if this pattern recurs across more than one or two projects.
+- `scripts/setup-project.sh` (Phase 3.5) — `SESSION_TEMPLATE_URL` is hardcoded to `main` while the ADR templates and `AGENTS.md` fetch from `develop`; the two should share `DEV_STANDARDS_RAW` (and the `--branch` flag recommendation)
+- `.session/specs/` in this repo does not exist and this repo's own Review Log entries are `- date — text` bullets, not the `**date — Title**` shape `base.md` now prescribes; harmless under the 8-entry cap but will archive verbatim in the old shape
 
 ### Next Steps
 
@@ -345,8 +426,9 @@ real functionality and is not the actual product of this repo.
 4. **Move or delete historical artifacts** — `claude.md.monolith` and `claude-code-session-starter.md`
 5. **Add bats/shellspec tests** for `--dry-run` mode — the flag exists precisely to enable testability; the migration and idempotency paths in `refresh-dev-standards.sh` were verified manually this session in a scratch sandbox and against `datasource-graph-analyzer` but have no automated coverage
 6. **Verify AGENTS.md auto-discovery** in Cursor/Windsurf/Cline/Codex before creating any tool-specific bridge file beyond `CLAUDE.md` — deferred from the `AGENTS.md` migration session, still unverified
-7. **Run the ADR/Review-Log handoff** (`.session/2026-08-08-adr-adoption-and-review-log-archiving.md`) — was blocked on `AGENTS.md` existing; unblocked now
+7. **Seed `specs/adr/` and `archive/` from `refresh-dev-standards.sh`** — the ADR/Review-Log convention shipped in `base.md` and `setup-project.sh`, but existing projects only get the new text on refresh; the directories/templates are created by the agent on demand, not by the script
 8. **Migrate remaining downstream projects** off `claude.md` — only `datasource-graph-analyzer` has been migrated so far; every other project pulling from this repo still has a legacy `claude.md` until someone runs `refresh-dev-standards.sh` in it
+9. **Convert legacy `[topic]-baseline.md` specs to ADRs** per downstream project, when convenient — deliberately not done in the ADR adoption session
 
 ### Architectural Notes
 
@@ -367,3 +449,4 @@ real functionality and is not the actual product of this repo.
 - 2026-03-19 — reviewed at eed77a4, 17 issues found (5 incomplete, 6 bugs/fragile, 3 test gaps, 4 architectural concerns)
 - 2026-08-08 — added `claude/modules/llm.md` (two-pass pipeline, chunking discipline, config conventions, thinking-model handling, pre-filtering, optional producer/consumer pattern), distilled from `datasource-graph-analyzer`'s proven patterns per `.session/2026-08-07-llm-pipeline-standards.md`. Along the way, discovered and removed the long-broken `llm-amplifier` module entry (listed in `setup-project.sh`'s menu and this file's own Tech Debt, but the module file never existed) — replaced it with `llm` across `setup-project.sh`, `README.md`, and `docs/usage_instructions.md`. Application of the new module to `lifeos-mcp` is deferred to a separate session in that repo.
 - 2026-08-10 — completed `.session/2026-08-08-agents-md-migration.md` (resumed after an earlier interruption): renamed `refresh-claude.sh` → `refresh-dev-standards.sh`, retargeted generation from `claude.md` to `AGENTS.md`, added idempotent legacy-migration mode with a three-way `CLAUDE.md` handling branch (create/preserve-user-additions/warn-on-unrecognized-content), and updated `setup-project.sh`, README.md, and `docs/usage_instructions.md` to match. Found and fixed a gap the interrupted session had left: `claude/base.md` and `claude/HEADER.md` — the actual content fetched into every generated file — still said `claude.md`/`refresh-claude.sh` throughout their body text, not just the header comment; fixed and re-synced this repo's own `AGENTS.md` to match. Verified the full migration + idempotency + all three `CLAUDE.md` branches in an isolated scratch sandbox, then ran the real end-to-end test against `datasource-graph-analyzer` per the handoff's step 9 — migration succeeded, `## Project-Specific` preserved byte-for-byte, second run took the normal-refresh path. Discovered and (with user sign-off) fixed a dangling-symlink edge case the handoff hadn't anticipated: that project's `GEMINI.md -> claude.md` symlink broke on migration and was repointed to `AGENTS.md` manually — not generalized into the script (see Tech Debt). The ADR/Review-Log handoff is now unblocked.
+- 2026-09-20 — completed `.session/2026-08-08-adr-adoption-and-review-log-archiving.md`: replaced the freeform `specs/[topic]-baseline.md` convention with numbered ADRs (`.session/specs/adr/` with `_template.md` + `index.md`; numbers permanent, supersession by status) and replaced the "10 entries → archive to `CHANGELOG.md`" rule with a bounded Review Log (8 live entries; overflow drained in one pass, moved verbatim to `.session/archive/review-log-<year>.md` by each entry's own year). Content lives in `claude/base.md`; added `claude/adr-template.md` and `claude/adr-index-template.md`; `setup-project.sh` Phase 3.5 now scaffolds `specs/adr/` and `archive/` (ADR templates fetched from `develop`, `DEV_STANDARDS_RAW*` hoisted above the phase). Re-synced this repo's `AGENTS.md` from `base.md`, which also pulled in the Logging Contract section from d17ee1c that had never propagated here. Verified via `bash -n`, `--dry-run`, a real run of the Phase 3.5 block against local `file://` sources, and a simulated rotation on a 10-entry fixture spanning a year boundary. Known gap: `refresh-dev-standards.sh` does not seed the new directories in existing projects (see Next Steps).
