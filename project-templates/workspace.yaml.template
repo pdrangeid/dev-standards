@@ -1,0 +1,40 @@
+# workspace.yaml — single source of truth for a multi-repo Claude Code workspace.
+# Create:    dev-standards workspace new <path> --from workspace.yaml
+# Re-render: dev-standards workspace render <path>   (after editing this file)
+# Check:     dev-standards workspace check <path>
+#
+# This example is the lifeos-logwatch-hostops-refactor workspace.
+name: lifeos-logwatch-hostops-refactor
+description: Align lifeos-logwatch with lifeos-hostops; fix cranston-llm telemetry gap
+
+# Absolute, no '~'. Every repo below must exist as a directory under this root.
+repos_root: /home/pdrangeid/develop
+
+# Optional: directory holding <repo_with_underscores>_registry.yaml files (or an
+# aggregate registry.yaml). A registry `purpose` is preferred over `role` below.
+# registry_dir: /home/pdrangeid/Projects
+
+repos:
+  - name: lifeos-hostops
+    role: Central job orchestration; pushes collection tasks to hosts  # fallback if no registry YAML
+  - name: lifeos-logwatch
+  - name: lifeos-envprofiler
+  - name: lifeos-core
+  - name: codebase-graph-analyzer
+  - name: dev-standards
+
+graph:
+  database: lifeos-kg
+  read_only: true            # sets the server's read-only flag; the write tool is denied regardless
+
+mcp:
+  servers:
+    - name: neo4j
+      package: neo4j-mcp-server   # github.com/neo4j/mcp; env vars are NEO4J_MCP_* (from .env)
+      version: 1.6.0              # exact pin
+      env_file: .env
+      # write_tool defaults to `write-cypher` for this package; the render adds
+      # `mcp__neo4j__write-cypher` to permissions.deny in .claude/settings.json.
+
+standards:
+  modules: [neo4j]           # base + workspace rules are always included

@@ -142,10 +142,76 @@ normal refresh path.
 
 ---
 
+## Multi-Repo Workspaces
+
+A **workspace** is a git-initialized folder (no remote needed) that lets one Claude Code
+session work across several repos with shared graph access and one session protocol. It is
+generated from a single `workspace.yaml`; nothing else is hand-maintained.
+
+```sh
+# Preferred
+uv run dev-standards workspace new ~/workspaces/my-effort --from workspace.yaml
+uv run dev-standards workspace render ~/workspaces/my-effort
+uv run dev-standards workspace check ~/workspaces/my-effort
+
+# Fallback (venv activated)
+dev-standards workspace check ~/workspaces/my-effort
+```
+
+The commands need a dev-standards checkout installed editable
+(`uv pip install -e .[dev]`) because the workspace `AGENTS.md` is composed from the local
+`claude/` fragments. Point elsewhere with `--fragments-dir` or `DEV_STANDARDS_CLAUDE_DIR`.
+
+### Creating a workspace
+
+1. Copy [project-templates/workspace.yaml.template](project-templates/workspace.yaml.template)
+   somewhere and edit it: `repos_root` (absolute, no `~`), the `repos` list, `graph.database`,
+   and the MCP server.
+2. `dev-standards workspace new <path> --from workspace.yaml` validates the yaml (every repo
+   directory must exist), then creates the folder, runs `git init`, renders everything, copies
+   `.session/_template.md`, and makes the first commit (`--no-commit` to skip it).
+3. Copy `.env.example` to `.env` and fill in the Neo4j credentials. `.env` is gitignored.
+4. Start Claude Code in the workspace folder. `.mcp.json` launches the pinned Neo4j MCP server
+   with `NEO4J_MCP_READ_ONLY=true`, and `.claude/settings.json` denies its `write-cypher` tool.
+
+### Adding a repo
+
+Edit `workspace.yaml` (add an entry under `repos:`), then run `dev-standards workspace render`.
+The repo map in `AGENTS.md` and `permissions.additionalDirectories` in
+`.claude/settings.local.json` update; nothing else needs touching. `check` exits non-zero
+when the rendered files have drifted from the yaml, so it is safe to run in CI or by hand.
+
+### What is safe to hand-edit
+
+| File | Ownership | Hand-editing |
+|---|---|---|
+| `workspace.yaml` | You (source of truth, committed) | Yes — then `render` |
+| `AGENTS.md` | Marker regions generated; rest is yours | Only **outside** `<!-- BEGIN/END GENERATED: name -->` regions (e.g. `## Notes`); edits inside regions are overwritten |
+| `CLAUDE.md`, `.mcp.json`, `.claude/settings.json`, `.env.example` | Fully generated, overwritten every render | No |
+| `.claude/settings.local.json` | Merged (gitignored, machine-specific) | Yes — only `permissions.additionalDirectories` is replaced; other keys survive |
+| `.gitignore` | Required lines appended if missing | Yes — nothing is removed |
+| `.session/*` | Yours after creation | Yes — render never touches it |
+| `.env` | Yours (gitignored, holds credentials) | Yes |
+
+`AGENTS.md` uses these regions: `header`, `standards` (base + selected modules, from `claude/`),
+`workspace-rules` (from `claude/modules/workspace.md`), and `repo-map`. Each repo's
+`role` in the map comes from its registry YAML `purpose` (when `registry_dir` is set), else
+the `role` field in `workspace.yaml`. If a region's markers are damaged, `render` refuses to
+write rather than guess. Do not run `refresh-dev-standards.sh` on a workspace — it manages
+project `AGENTS.md` files, and a workspace is refreshed with `render`.
+
+`.mcp.json` embeds the absolute workspace path (for `--env-file`), so it changes when the
+workspace is re-rendered on another machine — commit the result or leave it, as you prefer.
+
+---
+
 ## Repository Structure
 
 ```
 dev-standards/
+├── dev_standards/
+│   ├── main.py              # typer app; `workspace` sub-app is registered here
+│   └── workspace/           # `dev-standards workspace` new / render / check
 ├── scripts/
 │   ├── setup-project.sh          # New project scaffolding
 │   └── refresh-dev-standards.sh  # Update auto-generated AGENTS.md sections (+ claude.md migration)
@@ -160,10 +226,12 @@ dev-standards/
 │       ├── manifest-analyzer.md
 │       ├── live-exporter.md
 │       ├── ast-analyzer.md
-│       └── llm.md
+│       ├── llm.md
+│       └── workspace.md     # Workspace rules; rendered by `dev-standards workspace`, not in the setup menu
 └── project-templates/
     ├── pyproject.toml.template
     ├── config.yaml.template
+    ├── workspace.yaml.template
     └── ARCHITECTURE.md.template
 ```
 
