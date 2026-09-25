@@ -492,7 +492,7 @@ functionality and are additive — they do not replace or wrap the scripts.
 
 ### Next Steps
 
-1. **Merge `feature/session-ledger-schema` to `develop`, push, and verify the GitHub `uvx` invocation** (check C6 in `.session/2026-09-25-dev-standards-session-file-schema.md`); then roll out the new template + `base.md` text with `refresh-dev-standards.sh` (next session). New projects only get the template after `develop` → `main`, because `setup-project.sh` fetches it from `main`
+1. **Roll out the session-file format** with `refresh-dev-standards.sh` in each downstream repo (next session). The GitHub `uvx --from git+https://github.com/pdrangeid/dev-standards@develop session-lint` invocation was verified 2026-09-25 from `lifeos-hostops` after the merge (check C6 of `.session/2026-09-25-dev-standards-session-file-schema.md`; exit codes, JSON output and schema export all correct). New projects only get the template after `develop` → `main`, because `setup-project.sh` fetches it from `main`
 2. **Test the workspace tool on `cranston-llm`** — the user will run it there (install with `uv pip install -e .[dev]`, copy `project-templates/workspace.yaml.template` to the `lifeos-logwatch-hostops-refactor` folder as `workspace.yaml`, `dev-standards workspace render`, commit with `Session: 2026-09-20-workspace-module`, add the `sudo crontab -l -u llmadmin` note under `## Notes`); fix whatever it turns up. `lifeos-hostops`/`lifeos-logwatch` were never available on pmd-office, so the real-folder regeneration is unverified
 3. **Move or delete historical artifacts** — `claude.md.monolith` and `claude-code-session-starter.md`
 4. **Remove the `rich<14` upper-bound pin** from `pyproject.toml` and the `setup-project.sh` heredoc (see Recommendations)
