@@ -57,7 +57,7 @@ def new(
     fragments_dir: Path | None = _FRAGMENTS,
     debug: bool = _DEBUG,
 ) -> None:
-    """Create a workspace: folder, git init, render, session template, first commit."""
+    """Create a workspace: folder, git init, render (incl. .session/), first commit."""
     configure_logging(debug)
     try:
         if path.exists() and any(path.iterdir()):
@@ -70,10 +70,6 @@ def new(
         shutil.copyfile(from_yaml, root / YAML_NAME)
         _git(root, "init")
         changed = apply_plan(root, plan_render(ws, root, fragments))
-
-        session_dir = root / ".session"
-        session_dir.mkdir(exist_ok=True)
-        shutil.copyfile(fragments / "session-template.md", session_dir / "_template.md")
 
         if not no_commit:
             _git(root, "add", "-A")

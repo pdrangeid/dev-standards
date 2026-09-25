@@ -66,3 +66,16 @@ def test_non_mapping_yaml_fails(tmp_path):
     path.write_text("- just\n- a list\n")
     with pytest.raises(WorkspaceError, match="YAML mapping"):
         load_workspace(path)
+
+
+def test_graph_database_defaults_to_neo4j(make_yaml):
+    ws = load_workspace(make_yaml(graph={"profile": "lifeos-kg"}))
+    assert (ws.graph.database, ws.graph.profile) == ("neo4j", "lifeos-kg")
+    assert ws.graph.allow_writes is False
+
+
+def test_allow_writes_requires_read_write(make_yaml):
+    with pytest.raises(WorkspaceError, match="allow_writes: true needs"):
+        load_workspace(make_yaml(graph={"allow_writes": True}))
+    ws = load_workspace(make_yaml(graph={"read_only": False, "allow_writes": True}))
+    assert ws.graph.allow_writes

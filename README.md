@@ -180,14 +180,22 @@ The commands need a dev-standards checkout installed editable
 ### Creating a workspace
 
 1. Copy [project-templates/workspace.yaml.template](project-templates/workspace.yaml.template)
-   somewhere and edit it: `repos_root` (absolute, no `~`), the `repos` list, `graph.database`,
-   and the MCP server.
+   somewhere and edit it: `repos_root` (absolute, no `~`), the `repos` list, the `graph`
+   section, and the MCP server. `graph.database` is the Neo4j database the MCP server opens
+   (default `neo4j`, the only one on Community Edition); a lifeos-neo4j profile name such as
+   `lifeos-kg` goes in `graph.profile`, which only appears in the rules text.
 2. `dev-standards workspace new <path> --from workspace.yaml` validates the yaml (every repo
-   directory must exist), then creates the folder, runs `git init`, renders everything, copies
-   `.session/_template.md`, and makes the first commit (`--no-commit` to skip it).
+   directory must exist), then creates the folder, runs `git init`, renders everything
+   (including the `.session/` scaffold), and makes the first commit (`--no-commit` to skip it).
 3. Copy `.env.example` to `.env` and fill in the Neo4j credentials. `.env` is gitignored.
 4. Start Claude Code in the workspace folder. `.mcp.json` launches the pinned Neo4j MCP server
    with `NEO4J_MCP_READ_ONLY=true`, and `.claude/settings.json` denies its `write-cypher` tool.
+   A workspace that needs ad-hoc writes sets `graph.read_only: false` and
+   `graph.allow_writes: true`, which drops the deny rule and changes the rules text.
+
+If something only works after hand-editing a generated file, put the change in
+`workspace.yaml` instead (`repos`, `graph`, or a server's `env:`), or it will be lost on the
+next render. Connection details (`NEO4J_MCP_URI`, `_USERNAME`, `_PASSWORD`) belong in `.env`.
 
 ### Adding a repo
 
@@ -202,11 +210,18 @@ when the rendered files have drifted from the yaml, so it is safe to run in CI o
 |---|---|---|
 | `workspace.yaml` | You (source of truth, committed) | Yes — then `render` |
 | `AGENTS.md` | Marker regions generated; rest is yours | Only **outside** `<!-- BEGIN/END GENERATED: name -->` regions (e.g. `## Notes`); edits inside regions are overwritten |
-| `CLAUDE.md`, `.mcp.json`, `.claude/settings.json`, `.env.example` | Fully generated, overwritten every render | No |
+| `CLAUDE.md`, `.mcp.json`, `.env.example` | Fully generated, overwritten every render | No — change `workspace.yaml` |
+| `.claude/settings.json` | Merged | Yes — only `enableAllProjectMcpServers` and this workspace's MCP write-tool deny entries are managed; other keys and deny rules survive |
 | `.claude/settings.local.json` | Merged (gitignored, machine-specific) | Yes — only `permissions.additionalDirectories` is replaced; other keys survive |
 | `.gitignore` | Required lines appended if missing | Yes — nothing is removed |
-| `.session/*` | Yours after creation | Yes — render never touches it |
+| `.session/_template.md`, `.session/specs/adr/_template.md` | Generated from `claude/` | No — canonical copies, replaced on render |
+| `.session/specs/adr/index.md`, `.session/archive/` | Created if missing | Yes — never overwritten |
+| `.session/YYYY-MM-DD-*.md`, ADRs | Yours | Yes — render never touches session files |
 | `.env` | Yours (gitignored, holds credentials) | Yes |
+
+The hand-written `## Notes` section at the end of `AGENTS.md` is where a workspace keeps its
+own Next Steps, Technical Debt and Review Log (a new workspace starts with those three
+headings). It plays the role `## Project-Specific` plays in a single repo.
 
 `AGENTS.md` uses these regions: `header`, `standards` (base + selected modules, from `claude/`),
 `workspace-rules` (from `claude/modules/workspace.md`), and `repo-map`. Each repo's

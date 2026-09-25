@@ -43,6 +43,15 @@ def _read(path: Path, label: str) -> str:
         raise WorkspaceError(f"Cannot read {label} fragment {path}: {e}") from e
 
 
+def read_fragment(fragments_dir: Path, name: str) -> str:
+    """Return a top-level template file (e.g. ``session-template.md``) byte-for-byte."""
+    path = fragments_dir / name
+    try:
+        return path.read_text()
+    except OSError as e:
+        raise WorkspaceError(f"Cannot read template {path}: {e}") from e
+
+
 def compose_standards(fragments_dir: Path, modules: list[str]) -> str:
     """Return base.md followed by each selected module, blank-line separated."""
     parts = [_read(fragments_dir / "base.md", "base")]
@@ -56,4 +65,27 @@ def compose_standards(fragments_dir: Path, modules: list[str]) -> str:
 def workspace_rules(fragments_dir: Path, ws: Workspace) -> str:
     """Return the workspace fragment with workspace-specific values substituted."""
     text = _read(fragments_dir / "modules" / "workspace.md", "workspace")
-    return text.replace("{{ graph_database }}", ws.graph.database)
+    return text.replace("{{ graph_access }}", graph_access(ws))
+
+
+def graph_access(ws: Workspace) -> str:
+    """The workspace's graph rules, derived from the ``graph`` section."""
+    g = ws.graph
+    lines = [f"Database: `{g.database}`."]
+    if g.profile:
+        lines.append(
+            f"Pipeline tools connect through the lifeos-neo4j profile `{g.profile}`; "
+            "the MCP server uses the database above."
+        )
+    if g.allow_writes:
+        lines.append(
+            "The MCP write tool is enabled (`graph.allow_writes`). Before an ad-hoc "
+            "write, state what it creates or changes; record the result in the "
+            "session ledger."
+        )
+    else:
+        lines.append(
+            "Ad-hoc Cypher is read-only. Graph writes happen only by running "
+            "pipeline tools."
+        )
+    return " ".join(lines)

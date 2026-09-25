@@ -29,8 +29,10 @@ repos:
   - name: dev-standards
 
 graph:
-  database: lifeos-kg
-  read_only: true            # sets the server's read-only flag; the write tool is denied regardless
+  database: neo4j            # the Neo4j database the MCP server connects to (CE has only `neo4j`)
+  profile: lifeos-kg         # optional: lifeos-neo4j profile the pipeline tools use (rules text only)
+  read_only: true            # sets the server's read-only flag
+  # allow_writes: true       # opt in to the MCP write tool (no deny rule); needs read_only: false
 
 mcp:
   servers:
@@ -38,8 +40,10 @@ mcp:
       package: neo4j-mcp-server   # github.com/neo4j/mcp; env vars are NEO4J_MCP_* (from .env)
       version: 1.6.0              # exact pin
       env_file: .env
-      # write_tool defaults to `write-cypher` for this package; the render adds
-      # `mcp__neo4j__write-cypher` to permissions.deny in .claude/settings.json.
+      # write_tool defaults to `write-cypher` for this package; unless graph.allow_writes
+      # is true, the render adds `mcp__neo4j__write-cypher` to permissions.deny.
+      # env: {NEO4J_MCP_LOG_LEVEL: debug}   # extra non-secret env; overrides the profile.
+      # URI, username and password go in the env file (see .env.example), never here.
 
 standards:
   modules: [neo4j]           # base + workspace rules are always included

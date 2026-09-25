@@ -86,7 +86,7 @@ def test_agents_md_composition(render, fragments):
             0
         ]
     )
-    assert text.rstrip().endswith("(hand-written; preserved on re-render)")
+    assert text.rstrip().endswith("### Review Log")
 
 
 def test_repo_map_uses_role_fallback_and_absolute_paths(render, repos_root):
@@ -206,12 +206,74 @@ def test_gitignore_appends_without_removing(render):
     )
 
 
-def test_session_dir_never_touched(render):
+def test_session_scaffold_rendered_and_session_files_untouched(render, fragments):
     session = render.root / ".session"
     session.mkdir()
     (session / "2026-01-01-topic.md").write_text("mine")
+    (session / "_template.md").write_text("# Session: [Topic]\nStatus: draft\n")
     render()
-    assert [p.name for p in session.iterdir()] == ["2026-01-01-topic.md"]
+    assert (session / "2026-01-01-topic.md").read_text() == "mine"
+    assert (session / "_template.md").read_text() == (
+        fragments / "session-template.md"
+    ).read_text()
+    assert (session / "specs/adr/_template.md").read_text() == (
+        fragments / "adr-template.md"
+    ).read_text()
+    assert (session / "specs/adr/index.md").is_file()
+    assert (session / "archive/.gitkeep").is_file()
+
+
+def test_adr_index_and_archive_are_create_only(render):
+    render()
+    index = render.root / ".session/specs/adr/index.md"
+    index.write_text("| 0001 | mine |\n")
+    (render.root / ".session/archive/.gitkeep").unlink()
+    (render.root / ".session/archive/review-log-2026.md").write_text("# log\n")
+    assert render() == [".session/archive/.gitkeep"]
+    assert index.read_text() == "| 0001 | mine |\n"
+
+
+def test_settings_json_keeps_other_keys_and_hand_added_denies(render):
+    render()
+    path = render.root / ".claude/settings.json"
+    data = json.loads(path.read_text())
+    data["enabledMcpjsonServers"] = ["neo4j"]
+    data["permissions"]["deny"].append("Bash(rm -rf:*)")
+    path.write_text(json.dumps(data))
+    render()
+    after = json.loads(path.read_text())
+    assert after["enabledMcpjsonServers"] == ["neo4j"]
+    assert after["permissions"]["deny"] == [
+        "Bash(rm -rf:*)",
+        "mcp__neo4j__write-cypher",
+    ]
+    assert render() == []  # idempotent
+
+
+def test_allow_writes_drops_only_our_deny_and_updates_rules(render, make_yaml):
+    render()
+    path = render.root / ".claude/settings.json"
+    data = json.loads(path.read_text())
+    data["permissions"]["deny"].append("Bash(rm -rf:*)")
+    path.write_text(json.dumps(data))
+    yaml_path = make_yaml(
+        "rw.yaml",
+        graph={"database": "neo4j", "read_only": False, "allow_writes": True},
+    )
+    render(yaml_path)
+    assert json.loads(path.read_text())["permissions"]["deny"] == ["Bash(rm -rf:*)"]
+    agents = (render.root / "AGENTS.md").read_text()
+    assert "The MCP write tool is enabled" in agents
+    assert "Ad-hoc Cypher is read-only" not in agents
+
+
+def test_profile_named_in_graph_rules(render, make_yaml):
+    render(make_yaml("p.yaml", graph={"profile": "lifeos-kg"}))
+    agents = (render.root / "AGENTS.md").read_text()
+    assert "Database: `neo4j`." in agents
+    assert "lifeos-neo4j profile `lifeos-kg`" in agents
+    mcp = json.loads((render.root / ".mcp.json").read_text())
+    assert mcp["mcpServers"]["neo4j"]["env"]["NEO4J_MCP_DATABASE"] == "neo4j"
 
 
 def test_missing_region_inserted_before_notes(render):

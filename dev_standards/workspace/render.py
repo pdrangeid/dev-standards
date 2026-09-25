@@ -1,15 +1,20 @@
 """Render a workspace: compute desired file contents, then apply or diff them.
 
 ``plan_render`` is pure with respect to the workspace folder except that it reads the
-current ``AGENTS.md`` and ``.claude/settings.local.json`` — the two files whose
-hand-written or unrelated content must survive a render. Both ``render`` and ``check``
-are built on the same plan, so a render followed by a check can never disagree.
+current files whose hand-written or unrelated content must survive a render. Both
+``render`` and ``check`` are built on the same plan, so a render followed by a check
+can never disagree.
 
 Ownership per file:
-  fully generated  CLAUDE.md, .mcp.json, .claude/settings.json, .env.example
-  merge-rendered   .claude/settings.local.json (only permissions.additionalDirectories)
+  fully generated  CLAUDE.md, .mcp.json, .env.example,
+                   .session/_template.md, .session/specs/adr/_template.md
+  merge-rendered   .claude/settings.json (enableAllProjectMcpServers + this
+                   workspace's MCP write-tool deny entries; other keys and deny
+                   entries survive), .claude/settings.local.json (only
+                   permissions.additionalDirectories)
   marker regions   AGENTS.md (only <!-- BEGIN/END GENERATED: name --> regions)
   ensure-lines     .gitignore (missing required lines appended, nothing removed)
+  create-if-absent .session/specs/adr/index.md, .session/archive/.gitkeep
 """
 
 import json
@@ -18,14 +23,17 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .fragments import compose_standards, workspace_rules
+from .fragments import compose_standards, read_fragment, workspace_rules
 from .models import Workspace, WorkspaceError
 from .registry import lookup_purpose
 
 logger = logging.getLogger(__name__)
 
 MARKER_RE = re.compile(r"<!-- (BEGIN|END) GENERATED: ([A-Za-z0-9_-]+) -->")
-NOTES_STUB = "## Notes\n\n(hand-written; preserved on re-render)\n"
+NOTES_STUB = (
+    "## Notes\n\n(hand-written; preserved on re-render)\n\n"
+    "### Next Steps\n\n### Technical Debt\n\n### Review Log\n"
+)
 GITIGNORE_LINES = [".env", ".claude/settings.local.json"]
 
 
@@ -160,28 +168,44 @@ def render_mcp_json(ws: Workspace, root: Path) -> str:
     return _json({"mcpServers": servers})
 
 
-def render_settings_json(ws: Workspace) -> str:
-    """``.claude/settings.json`` — deny the write tool of every server that has one."""
-    deny = [
+def _load_json_object(existing: str | None, path: Path) -> dict:
+    """Parse an existing JSON settings file; refuse to guess at a broken one."""
+    if existing is None:
+        return {}
+    try:
+        data = json.loads(existing)
+    except json.JSONDecodeError as e:
+        raise WorkspaceError(f"{path} is not valid JSON ({e}); fix it by hand") from e
+    if not isinstance(data, dict):
+        raise WorkspaceError(f"{path} must contain a JSON object")
+    return data
+
+
+def render_settings_json(ws: Workspace, existing: str | None, path: Path) -> str:
+    """``.claude/settings.json`` — deny each write tool unless writes are allowed.
+
+    Owns ``enableAllProjectMcpServers`` and this workspace's write-tool deny entries;
+    other keys and hand-added deny rules survive a render.
+    """
+    ours = [
         f"mcp__{s.name}__{tool}"
         for s in ws.mcp.servers
         if (tool := s.effective_write_tool)
     ]
-    return _json({"enableAllProjectMcpServers": True, "permissions": {"deny": deny}})
+    data = _load_json_object(existing, path)
+    data["enableAllProjectMcpServers"] = True
+    permissions = data.get("permissions")
+    if not isinstance(permissions, dict):
+        permissions = {}
+    kept = [e for e in permissions.get("deny", []) if e not in ours]
+    permissions["deny"] = kept + ([] if ws.graph.allow_writes else ours)
+    data["permissions"] = permissions
+    return _json(data)
 
 
 def render_settings_local(ws: Workspace, existing: str | None, path: Path) -> str:
     """Merge ``permissions.additionalDirectories`` into the existing local settings."""
-    data: dict = {}
-    if existing is not None:
-        try:
-            data = json.loads(existing)
-        except json.JSONDecodeError as e:
-            raise WorkspaceError(
-                f"{path} is not valid JSON ({e}); fix it by hand"
-            ) from e
-        if not isinstance(data, dict):
-            raise WorkspaceError(f"{path} must contain a JSON object")
+    data = _load_json_object(existing, path)
     permissions = data.get("permissions")
     if not isinstance(permissions, dict):
         permissions = {}
@@ -236,17 +260,46 @@ def plan_render(ws: Workspace, root: Path, fragments_dir: Path) -> dict[str, str
         "repo-map": repo_map(ws),
     }
     local_path = root / ".claude" / "settings.local.json"
-    return {
+    settings_path = root / ".claude" / "settings.json"
+    plan = {
         "CLAUDE.md": "@AGENTS.md\n",
         "AGENTS.md": merge_regions(_read_existing(root / "AGENTS.md"), agents_regions),
         ".mcp.json": render_mcp_json(ws, root),
-        ".claude/settings.json": render_settings_json(ws),
+        ".claude/settings.json": render_settings_json(
+            ws, _read_existing(settings_path), settings_path
+        ),
         ".claude/settings.local.json": render_settings_local(
             ws, _read_existing(local_path), local_path
         ),
         ".env.example": render_env_example(ws),
         ".gitignore": render_gitignore(_read_existing(root / ".gitignore")),
     }
+    plan.update(session_scaffold(root, fragments_dir))
+    return plan
+
+
+def session_scaffold(root: Path, fragments_dir: Path) -> dict[str, str]:
+    """``.session/`` templates (owned) plus the ADR index and archive (only if absent).
+
+    Mirrors what ``refresh-dev-standards.sh`` does for single repos. Session files
+    themselves are never part of the plan.
+    """
+    plan = {
+        ".session/_template.md": read_fragment(fragments_dir, "session-template.md"),
+        ".session/specs/adr/_template.md": read_fragment(
+            fragments_dir, "adr-template.md"
+        ),
+    }
+    create_only = {
+        ".session/specs/adr/index.md": read_fragment(
+            fragments_dir, "adr-index-template.md"
+        ),
+        ".session/archive/.gitkeep": "",
+    }
+    for rel, content in create_only.items():
+        if not (root / rel).exists():
+            plan[rel] = content
+    return plan
 
 
 def diff_plan(root: Path, plan: dict[str, str]) -> list[Drift]:

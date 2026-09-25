@@ -50,11 +50,11 @@ models.py ──export──▶ schemas/*.v1.schema.json ──▶ external cons
 | `scripts/refresh-dev-standards.sh` | Update a project's `AGENTS.md` and `.session/` scaffold | Split on `## Project-Specific`; legacy `claude.md` migration; templates fetched before any write, replaced if different; `index.md` / `archive/` created only if missing |
 | `claude/` | Fragment library | `base.md`, `modules/*.md`, session and ADR templates |
 | `dev_standards/main.py` | CLI entry point | Typer app; registers the `workspace` and `registry` sub-apps (`session-lint` / `session-schema` are separate console scripts) |
-| `workspace/models.py` | Validate `workspace.yaml` | Pydantic; absolute `repos_root`, non-empty `graph.database`, repo dirs exist, pinned MCP version; `KNOWN_SERVERS` env/tool contract |
+| `workspace/models.py` | Validate `workspace.yaml` | Pydantic; absolute `repos_root`, `graph.database` (default `neo4j`) vs. informational `graph.profile`, `allow_writes` needs `read_only: false`, repo dirs exist, pinned MCP version; `KNOWN_SERVERS` env/tool contract |
 | `workspace/fragments.py` | Compose standards | Resolve `claude/` (option → `$DEV_STANDARDS_CLAUDE_DIR` → checkout); base + modules; workspace rules |
 | `workspace/registry.py` | Repo descriptions | `<repo>_registry.yaml` then aggregate `registry.yaml`, field `purpose` |
-| `workspace/render.py` | Desired-state engine | Pure plan; marker-region merge; `settings.local.json` merge; plan → apply / diff |
-| `workspace/cli.py` | `workspace new/render/check` | `new` validates first, then git init, render, session template, commit |
+| `workspace/render.py` | Desired-state engine | Pure plan; marker-region merge; `settings.json` / `settings.local.json` merges; `.session/` scaffold (templates owned, ADR index + archive create-only); plan → apply / diff |
+| `workspace/cli.py` | `workspace new/render/check` | `new` validates first, then git init, render, commit |
 | `registry/models.py` | Registry file schema | Pydantic `RepoEntry` (`repo`, `purpose` required); lenient list coercion; deterministic YAML |
 | `registry/generate.py` | Produce one repo's registry file | Prompt on stdin to an LLM CLI run from an empty temp dir; validate before write; `generated_from` hash skips unchanged repos |
 | `registry/hub.py` | Machine-local hub | One symlink per repo in `~/.repository_registry/`; generated `registry.yaml` rollup; conflict guards |

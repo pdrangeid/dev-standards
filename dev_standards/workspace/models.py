@@ -6,7 +6,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +79,15 @@ class Graph(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    database: str
+    # The Neo4j database the MCP server connects to. Community Edition has exactly
+    # one, `neo4j`; a lifeos-neo4j profile name (e.g. lifeos-kg) belongs in `profile`.
+    database: str = "neo4j"
+    # lifeos-neo4j connection profile the pipeline tools use; informational only
+    # (it appears in the workspace rules, the MCP server never sees it).
+    profile: str | None = None
     read_only: bool = True
+    # Opt in to the MCP write tool: no deny rule is rendered for it.
+    allow_writes: bool = False
 
     @field_validator("database")
     @classmethod
@@ -82,6 +96,15 @@ class Graph(BaseModel):
         if not v:
             raise ValueError("graph.database must not be empty")
         return v
+
+    @model_validator(mode="after")
+    def _writes_need_read_write(self) -> "Graph":
+        if self.allow_writes and self.read_only:
+            raise ValueError(
+                "graph.allow_writes: true needs graph.read_only: false "
+                "(a read-only server rejects the writes anyway)"
+            )
+        return self
 
 
 class McpServer(BaseModel):
