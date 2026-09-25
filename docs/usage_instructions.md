@@ -23,13 +23,18 @@ dev-standards workspace check ~/workspaces/my-effort --debug
 | `dev-standards registry refresh` | `--hub`, `--llm-cmd`, `--force`, `--debug` | Regenerate every linked repo (skipping unchanged), then the rollup; exits 1 if any repo failed |
 | `dev-standards registry rollup` | `--hub`, `--debug` | Rebuild the hub's `registry.yaml` from the linked files |
 | `dev-standards registry check` | `--hub`, `--debug` | Validate every hub file against the schema and report rollup drift; exits 1 on problems |
+| `session-lint <path>...` | `--strict`, `--format text\|json`, `--debug` | Validate session files (frontmatter + `## Ledger`); directories recurse `*.md`, skipping `_template.md`, `specs/`, `archive/`; exits 1 on any error |
+| `session-schema export` | `--out` (default `schemas/`), `--debug` | Write `session-header.v1.schema.json` / `session-ledger.v1.schema.json` from the Pydantic models |
 
 `path` defaults to the current directory. Workspace fragments are read from the local
 `claude/` directory of an editable install, or from `--fragments-dir` /
 `$DEV_STANDARDS_CLAUDE_DIR`. The registry LLM command is `--llm-cmd` /
 `$DEV_STANDARDS_REGISTRY_LLM_CMD` (default `claude -p`); the hub is `--hub` /
 `$DEV_STANDARDS_REGISTRY_HUB` (default `~/.repository_registry`).
-See `README.md` (`## Multi-Repo Workspaces`, `## Repo Registry`) for the workflows, and
+From another repo, run the linter without installing:
+`uvx --from git+https://github.com/pdrangeid/dev-standards@develop session-lint .session/`
+(or `uvx --from ~/develop/dev-standards ...` for a local checkout).
+See `README.md` (`## Multi-Repo Workspaces`, `## Repo Registry`, `## Session Files and session-lint`) for the workflows, and
 `docs/registry-schema.md` for the registry file contract.
 
 ## Configuration

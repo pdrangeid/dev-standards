@@ -264,6 +264,41 @@ contract asks for alongside its console output.
 
 ---
 
+## Session Files and `session-lint`
+
+Every `.session/YYYY-MM-DD-topic.md` file carries YAML frontmatter (`schema_version: 1`, `id`,
+`title`, `status`, `created`, `repos`, `branch`, `links`) and one `## Ledger` section holding a
+single ` ```yaml session-ledger ` block: `runs`, `outcome`, `decisions`, `questions`,
+`findings`, `checks`, `debt`, `blockers`, `produced`. The template is
+[claude/session-template.md](claude/session-template.md); the rules (item IDs, qualified
+cross-file refs, links pointing backward in time) are in `claude/base.md` under
+Session Management, and the rationale is
+[ADR-0001](.session/specs/adr/0001-governed-graph-extractable-session-files.md).
+
+```sh
+# From any repo (preferred) — exit 1 on any error
+uvx --from git+https://github.com/pdrangeid/dev-standards@develop session-lint .session/
+
+# No GitHub access: a local checkout
+uvx --from ~/develop/dev-standards session-lint .session/
+
+# Inside this repo
+uv run session-lint .session/ --strict --format json
+uv run session-schema export --out schemas/   # regenerate the JSON Schemas after a model change
+```
+
+- A directory is linted recursively (`*.md`), skipping `_template.md`, `specs/` and `archive/`.
+- Files with no frontmatter are **legacy**: reported as `info`, or as errors with `--strict`.
+- Warnings (a leftover `Status:` line, the old "Decisions Made This Session" heading, `active`
+  with no runs) never fail the run.
+- The Pydantic models in `dev_standards/session_schema/models.py` are the source of truth.
+  `schemas/session-header.v1.schema.json` and `schemas/session-ledger.v1.schema.json` are
+  generated from them and committed; a test fails if they drift. External consumers (e.g.
+  `codebase-graph-analyzer`) validate against those files, but the JSON Schema captures shape
+  and enums only — cross-field rules are enforced by `session-lint` alone.
+
+---
+
 ## Repository Structure
 
 ```
@@ -271,7 +306,9 @@ dev-standards/
 ├── dev_standards/
 │   ├── main.py              # typer app; `workspace` and `registry` sub-apps are registered here
 │   ├── workspace/           # `dev-standards workspace` new / render / check
-│   └── registry/            # `dev-standards registry` generate / add / refresh / rollup / check
+│   ├── registry/            # `dev-standards registry` generate / add / refresh / rollup / check
+│   └── session_schema/      # `session-lint` and `session-schema export`
+├── schemas/                 # generated session-{header,ledger}.v1.schema.json (committed)
 ├── docs/
 │   └── registry-schema.md   # the registry file contract
 ├── scripts/
