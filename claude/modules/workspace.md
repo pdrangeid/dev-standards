@@ -15,4 +15,4 @@ Database: `{{ graph_database }}`. Ad-hoc Cypher is read-only. Graph writes happe
 - Handoffs live in `.session/` (template: `.session/_template.md`).
 - Every commit, in any repo, includes the trailer `Session: <handoff-file-stem>`.
 - A decision that affects one repo is also recorded in that repo's `AGENTS.md`.
-- Append decisions to the active handoff's "Decisions Made This Session" as they are made.
+- Record decisions in the active handoff's `## Ledger` block as they are made.

@@ -34,7 +34,7 @@ def test_new_creates_git_repo_with_rendered_files(tmp_path, make_yaml):
         ".session/_template.md",
     ):
         assert (dest / rel).is_file(), rel
-    assert "Session: [Topic]" in (dest / ".session/_template.md").read_text()
+    assert "```yaml session-ledger" in (dest / ".session/_template.md").read_text()
 
     tracked = set(_git(dest, "ls-files").split())
     assert "workspace.yaml" in tracked

@@ -371,30 +371,47 @@ if [ "$DRY_RUN" = false ]; then
     else
         echo "  ⚠️  Could not fetch _template.md — writing minimal local stub"
         cat > "$SESSION_DIR/_template.md" << 'SESSIONSTUB'
-# Session: [Topic]
-<!-- Copy this file, rename it YYYY-MM-DD-topic.md, then edit the copy. -->
-Date: YYYY-MM-DD
-Repo: [repo-name]
-Branch: [feature/branch-name or develop]
-Status: draft | active | complete
- 
+---
+schema_version: 1
+id: YYYY-MM-DD-topic            # must equal the filename stem
+title: One-line title
+status: draft                   # draft | active | blocked | complete | superseded | abandoned
+status_reason: null             # required when blocked or abandoned
+created: YYYY-MM-DD             # must equal the id's date prefix
+repos:
+  - {name: repo-name, role: primary}
+branch: develop
+links: {depends_on: [], supersedes: [], split_from: null, references: []}
+---
+# <title>
+<!-- Minimal fallback; the canonical template is claude/session-template.md in dev-standards. -->
+
 ## Goal
 One paragraph — what should exist at the end of this session.
- 
+
 ## Context & Constraints
-- **Decision**: [locked decisions Claude should not revisit]
-- **Out of scope**: [explicit exclusions]
-- **Reference files**: [.session/specs/adr/ ADRs or other files to read first]
- 
+Out-of-scope items and reference files. Refer to locked decisions by ledger ID (e.g. D1).
+
 ## Relevant Specs / Schemas / Examples
 [Paste schemas, data shapes, code samples here]
- 
+
 ## Instructions
 1. Read `AGENTS.md` first.
 2. [Your actual instructions here]
- 
-## Decisions Made This Session
-_None yet._
+
+## Ledger
+
+```yaml session-ledger
+runs: []
+outcome: null
+decisions: []
+questions: []
+findings: []
+checks: []
+debt: []
+blockers: []
+produced: []
+```
 SESSIONSTUB
     fi
  
