@@ -1,3 +1,4 @@
 # Review Log Archive — 2026
 
 - 2026-03-19 — reviewed at eed77a4, 17 issues found (5 incomplete, 6 bugs/fragile, 3 test gaps, 4 architectural concerns)
+- 2026-08-08 — added `claude/modules/llm.md` (two-pass pipeline, chunking discipline, config conventions, thinking-model handling, pre-filtering, optional producer/consumer pattern), distilled from `datasource-graph-analyzer`'s proven patterns per `.session/2026-08-07-llm-pipeline-standards.md`. Along the way, discovered and removed the long-broken `llm-amplifier` module entry (listed in `setup-project.sh`'s menu and this file's own Tech Debt, but the module file never existed) — replaced it with `llm` across `setup-project.sh`, `README.md`, and `docs/usage_instructions.md`. Application of the new module to `lifeos-mcp` is deferred to a separate session in that repo.
