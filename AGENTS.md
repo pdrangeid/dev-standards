@@ -297,22 +297,79 @@ implementation sessions (Claude Code).
 - ADRs are for durable/architectural decisions. Routine fixes and minor refactors
   belong in the Review Log only.
 
+### Session Files
+
+A session file is one markdown file with two machine-readable parts, validated by
+`session-lint` against the schema in dev-standards (`dev_standards/session_schema/`):
+
+- **YAML frontmatter** (`schema_version: 1`, `id` = filename stem, `title`, `status`,
+  `status_reason`, `created`, `repos` with exactly one `primary`, `branch`, `links`).
+  `status` is `draft | active | blocked | complete | superseded | abandoned`;
+  `blocked`/`abandoned` need a `status_reason`. A file without frontmatter is legacy.
+- **One `## Ledger` section** holding exactly one ` ```yaml session-ledger ` fence with
+  typed lists (IDs in brackets):
+
+  | Key | Holds |
+  |---|---|
+  | `runs` | one entry per sitting: `date`, `surface`, `summary`, `commits` (`repo@sha`) |
+  | `outcome` | `met \| partial \| not_met \| abandoned`, plus a note |
+  | `decisions` [D] | `proposed \| accepted \| rejected`; `origin: user \| agent \| carried` (`carried` needs `carried_from`); `answers`, `supersedes`, `adr` |
+  | `questions` [Q] | `open \| resolved \| deferred`; resolved needs `resolution` or an answering decision |
+  | `findings` [F] | `bug \| premise_invalid \| confirmation \| drift` |
+  | `checks` [C] | `pending \| pass \| fail \| not_run`; `fail`/`not_run` need a `reason` |
+  | `debt` [T] | `this_repo \| other_repo \| platform` (`other_repo` needs `target_repo`) |
+  | `blockers` [B] | `kind`, `owner`, `open \| cleared` |
+  | `produced` | artifacts created: `kind` (graph label, e.g. `ShellScript`), `ref`, `repo` |
+
+- **IDs and references.** Items are `D1`, `Q1`, `F1`, `C1`, `T1`, `B1` within a file.
+  Same-file refs are `#Q1`; cross-file refs are always qualified
+  `<repo>/<session-id>#Q1`, and session refs are `<repo>/<session-id>`.
+- **Links point backward in time. Never edit a closed file to record what happened
+  later.** A newer file's decision `answers` or `supersedes` an item in an older
+  file; "resolved"/"superseded" is derived from those incoming links. That is why a
+  decision has no `superseded` status.
+- **Locked decisions live in the ledger**, as `origin: user` or `origin: carried`
+  entries. Context prose refers to them by ID rather than restating them.
+- YAML keys are snake_case. Never parse these blocks with regex. Locate them, then
+  `yaml.safe_load` them.
+- The published JSON Schemas (`schemas/session-header.v1.schema.json`,
+  `schemas/session-ledger.v1.schema.json` in dev-standards) capture shape and enums
+  only. Cross-field rules (id/date match, one primary repo, same-file refs, status
+  vs. ledger contents) are enforced only by `session-lint`, so JSON Schema
+  validation is necessary but not sufficient.
+
+Run the linter from any repo (exit 1 on any error):
+
+```sh
+uvx --from git+https://github.com/pdrangeid/dev-standards@develop session-lint .session/
+# No GitHub access: use a local checkout
+uvx --from ~/develop/dev-standards session-lint .session/
+```
+
+It lints `*.md` recursively, skipping `_template.md`, `specs/` and `archive/`.
+Legacy files are reported as info (`--strict` makes them errors).
+
 ### Starting a Claude Code Session
 
 At the start of every session, before touching any code:
 
 1. Read `AGENTS.md` (always)
-2. Check for a session file: `ls .session/` — if a dated `.md` file exists and is `Status: active`, read it
-3. Skim `specs/adr/index.md` if it exists; open only the ADRs the session file
+2. Check for a session file: `ls .session/`. If a dated `.md` file has `status: draft`
+   or `active` in its frontmatter (legacy files: a `Status:` line), read it
+3. For a conforming file, set `status: active` and append a `runs` entry (`date`,
+   `surface`, a placeholder `summary`)
+4. Skim `specs/adr/index.md` if it exists; open only the ADRs the session file
    references or that the index shows are relevant (skip `superseded`/`deprecated`)
-4. Confirm your understanding of the **Goal** and **Constraints** before proceeding
+5. Confirm your understanding of the **Goal** and **Constraints** before proceeding
 
 If no session file exists, ask the user if there's a session to load or proceed with
 their in-chat instructions.
 
 ### During a Session
 
-- Append decisions, discoveries, and deviations to `## Decisions Made This Session`
+- Record decisions, questions, findings, checks, debt and blockers in the `## Ledger`
+  block as they happen, with the next free ID of each kind (legacy files: append to
+  `## Decisions Made This Session`)
 - If a constraint or out-of-scope boundary is hit, surface it explicitly rather than silently working around it
 - Do not modify `_template.md` — copy it, rename it, then edit the copy
 
@@ -320,13 +377,17 @@ their in-chat instructions.
 
 When the user signals the session is complete:
 
-1. Update `Status:` to `complete` in the session file
+1. Close the ledger: fill this run's `summary` and `commits`, set every check's
+   `result`, set `outcome`, and set the final `status` (`complete`, or `blocked` /
+   `abandoned` with a `status_reason`). Then run `session-lint` on the file; it must
+   pass. (Legacy file: update its `Status:` line instead.)
 2. Identify any decisions that should be promoted to an ADR (durable/architectural)
    or to `AGENTS.md` (conventions every session must know)
 3. Offer to write them: each durable decision gets a new numbered file in
    `specs/adr/` copied from `_template.md` — not a freeform addition to a baseline doc
 4. Append each new ADR to `specs/adr/index.md`; if it supersedes an earlier ADR,
-   update that ADR's `Status:` line and its index row
+   update that ADR's `Status:` line and its index row. A ledger decision that gets
+   an ADR carries an `adr: ADR-NNNN` pointer
 5. **Update `AGENTS.md`:**
    - Append an entry to the **Review Log**. Shape: `**YYYY-MM-DD — Title**` followed
      by one paragraph covering what was built, what changed, and any bugs fixed.
@@ -392,9 +453,10 @@ ecosystem. Primary deliverables are two bash scripts and a set of modular AGENTS
 - `project-templates/` — reference templates for pyproject.toml, config.yaml, ARCHITECTURE.md, workspace.yaml
 - `dev_standards/workspace/` + `dev-standards workspace new|render|check` — Python CLI that scaffolds and maintains multi-repo Claude Code workspaces from a `workspace.yaml` (see README `## Multi-Repo Workspaces`)
 - `dev_standards/registry/` + `dev-standards registry generate|add|refresh|rollup|check` — generates each repo's `<repo>_registry.yaml` via an LLM CLI and maintains the machine-local `~/.repository_registry/` hub; schema in `docs/registry-schema.md`, consumed by `workspace/registry.py` (see README `## Repo Registry`)
+- `dev_standards/session_schema/` + `session-lint` / `session-schema export` — Pydantic model for session-file frontmatter + `## Ledger` block, the linter, and the committed `schemas/session-{header,ledger}.v1.schema.json` (see ADR-0001)
 
 The bash scripts remain the canonical mechanism for project `AGENTS.md`. The Python package is
-otherwise a scaffold-generated stub; the `workspace` and `registry` modules are its real
+otherwise a scaffold-generated stub; the `workspace`, `registry` and `session_schema` modules are its real
 functionality and are additive — they do not replace or wrap the scripts.
 
 ### Key Patterns
@@ -406,6 +468,7 @@ functionality and are additive — they do not replace or wrap the scripts.
 - Module selection: interactive menu or `--modules neo4j,live-exporter` flag
 - Registry: an LLM only *describes* a repo (prompt on stdin, run from an empty temp dir); Python validates and writes. Idempotency is a `generated_from` source-doc hash, not LLM determinism, so unchanged repos cost no LLM call. The workspace consumer contract in `workspace/registry.py` (per-repo dict with `purpose`, aggregate list of `{repo, purpose}`) is locked; the hub needs no consumer changes because symlinks resolve transparently
 - Workspaces: `workspace.yaml` is the source of truth; `render`/`check` share one desired-state plan (`workspace/render.py`), so re-render is idempotent and drift reporting matches render. The workspace `AGENTS.md` is marker-delimited (`<!-- BEGIN/END GENERATED: name -->`), reads the same `claude/` fragments from a local editable checkout, and must not be run through `refresh-dev-standards.sh`. `claude/modules/workspace.md` is deliberately absent from `setup-project.sh`'s module menu
+- Session schema: the Pydantic models are the source of truth; `schemas/*.json` are generated (`uv run session-schema export --out schemas/`) and `tests/test_schema_drift.py` fails if they're stale — regenerate and commit both after any model change. Parsing locates blocks with a fence-aware line scan, then `yaml.safe_load`; a schema change means `schema_version: 2` and new files, never an edit to v1
 - Both scripts default `DEV_STANDARDS_RAW` to the `develop` branch (a `main` URL is built but only used if the `develop` line is commented back out manually) — intentional for now so consumers get in-flight standards updates before they're merged to `main`; no `--branch` flag exists yet (see Recommendations)
 
 ### Technical Debt
@@ -423,15 +486,17 @@ functionality and are additive — they do not replace or wrap the scripts.
 - `dev_standards/workspace/models.py` `KNOWN_SERVERS` holds the MCP env/tool contract for exactly one package (`neo4j-mcp-server`); adding another server means adding a profile
 - `dev_standards/main.py`'s `run` stub is still a placeholder command
 - The user's existing `~/Projects/*_registry.yaml` data has not been migrated into the repos or the hub (misnamed `lkifeos_schemata_registry.yaml`; `lifeos-embeddings`/`lifeos-jobwatch` aggregate-only; `datasource-graph-analyzer` per-repo only), and their hand-run `gemini` scripts fail because the CLI rejects their account tier (see `.session/2026-09-20-repo-registry-generator.md`)
-- `.session/specs/` in this repo does not exist and this repo's own Review Log entries are `- date — text` bullets, not the `**date — Title**` shape `base.md` now prescribes; harmless under the 8-entry cap but will archive verbatim in the old shape
+- This repo's own Review Log entries before 2026-09-20 are `- date — text` bullets, not the `**date — Title**` shape `base.md` prescribes; harmless under the 8-entry cap but will archive verbatim in the old shape
+- This repo's older `.session/` files are legacy (no frontmatter); `session-lint .session/` reports them as info. Converting them is the separate legacy-backfill project (sidecars), not a hand edit
+- Nothing enforces `session-lint` at close (no pre-commit hook or CI); adherence relies on the Closing a Session step
 
 ### Next Steps
 
-1. **Test the workspace tool on `cranston-llm`** — the user will run it there (install with `uv pip install -e .[dev]`, copy `project-templates/workspace.yaml.template` to the `lifeos-logwatch-hostops-refactor` folder as `workspace.yaml`, `dev-standards workspace render`, commit with `Session: 2026-09-20-workspace-module`, add the `sudo crontab -l -u llmadmin` note under `## Notes`); fix whatever it turns up. `lifeos-hostops`/`lifeos-logwatch` were never available on pmd-office, so the real-folder regeneration is unverified
-2. **Move or delete historical artifacts** — `claude.md.monolith` and `claude-code-session-starter.md`
-3. **Remove the `rich<14` upper-bound pin** from `pyproject.toml` and the `setup-project.sh` heredoc (see Recommendations)
-4. **Adopt the registry on real repos and schedule it** — `dev-standards registry add <repo>` per repo (this regenerates via the LLM; decide whether to seed from the existing `~/Projects` files instead), point `registry_dir` at `~/.repository_registry`, then schedule a weekly `registry refresh` under `run_uv_script.sh`. Point the Mermaid flowchart script at the hub's `registry.yaml`
-5. **Merge `feature/repo-registry-generator`** to `develop` when satisfied (a deliberate human action)
+1. **Merge `feature/session-ledger-schema` to `develop`, push, and verify the GitHub `uvx` invocation** (check C6 in `.session/2026-09-25-dev-standards-session-file-schema.md`); then roll out the new template + `base.md` text with `refresh-dev-standards.sh` (next session). New projects only get the template after `develop` → `main`, because `setup-project.sh` fetches it from `main`
+2. **Test the workspace tool on `cranston-llm`** — the user will run it there (install with `uv pip install -e .[dev]`, copy `project-templates/workspace.yaml.template` to the `lifeos-logwatch-hostops-refactor` folder as `workspace.yaml`, `dev-standards workspace render`, commit with `Session: 2026-09-20-workspace-module`, add the `sudo crontab -l -u llmadmin` note under `## Notes`); fix whatever it turns up. `lifeos-hostops`/`lifeos-logwatch` were never available on pmd-office, so the real-folder regeneration is unverified
+3. **Move or delete historical artifacts** — `claude.md.monolith` and `claude-code-session-starter.md`
+4. **Remove the `rich<14` upper-bound pin** from `pyproject.toml` and the `setup-project.sh` heredoc (see Recommendations)
+5. **Adopt the registry on real repos and schedule it** — `dev-standards registry add <repo>` per repo (this regenerates via the LLM; decide whether to seed from the existing `~/Projects` files instead), point `registry_dir` at `~/.repository_registry`, then schedule a weekly `registry refresh` under `run_uv_script.sh`. Point the Mermaid flowchart script at the hub's `registry.yaml`
 6. **Add bats/shellspec tests** for `--dry-run` mode — the flag exists precisely to enable testability; the migration and idempotency paths in `refresh-dev-standards.sh` were verified manually this session in a scratch sandbox and against `datasource-graph-analyzer` but have no automated coverage
 7. **Verify AGENTS.md auto-discovery** in Cursor/Windsurf/Cline/Codex before creating any tool-specific bridge file beyond `CLAUDE.md` — deferred from the `AGENTS.md` migration session, still unverified
 8. **Seed `specs/adr/` and `archive/` from `refresh-dev-standards.sh`** — the ADR/Review-Log convention shipped in `base.md` and `setup-project.sh`, but existing projects only get the new text on refresh; the directories/templates are created by the agent on demand, not by the script
@@ -466,3 +531,7 @@ Completed `.session/2026-09-20-dev-standards-workspace-module.md` except its ste
 **2026-09-20 — Repo registry generator**
 
 Completed `.session/2026-09-20-repo-registry-generator.md`. Added `dev-standards registry generate|add|refresh|rollup|check` (`dev_standards/registry/`), `docs/registry-schema.md`, and 47 tests (84 total). It builds the missing producer side of the registry that `workspace/registry.py` consumes: per-repo files are overwritten (never appended), a `generated_from` hash of the source docs makes a re-run a true no-op without an LLM call, and LLM output is validated before anything is written. The machine-local `~/.repository_registry/` symlink hub (confirmed with the user) makes every repo's registry discoverable in one place with no change to the locked consumer contract; the hub's symlinks are the repo list and `refresh` (the weekly job; schedule documented, not installed) continues past per-repo failures. Smoke-tested with a real LLM on a scratch copy of this repo's docs; a smoke test also found that headless `gemini` refuses untrusted directories, so the LLM now runs from an empty temp dir, and that the `gemini` CLI is rejected for the user's account tier, so the default LLM command is `claude -p` (override via `--llm-cmd`). Also fixed the earlier workspace CLI's logger name to satisfy Logging Contract rule 1. Existing `~/Projects` registry data was not migrated (see Tech Debt).
+
+**2026-09-25 — Governed session-file schema**
+
+Completed `.session/2026-09-25-dev-standards-session-file-schema.md`, the first session file written in the new format. Added `dev_standards/session_schema/`: Pydantic models for the frontmatter header and the `## Ledger` block, a fence-aware parser, `session-lint` (exit 1 on error, `--strict`, `--format json`, a plain `SUMMARY` log line) and `session-schema export`. Also added committed `schemas/session-{header,ledger}.v1.schema.json` behind a drift test, and 14 fixtures and 75 tests (159 total). Replaced `claude/session-template.md` and the `setup-project.sh` fallback stub, renamed "Decisions Made This Session" to `## Ledger` everywhere it was referenced, rewrote `base.md`'s session-workflow text (new Session Files subsection, run entries at start, lint at close) and re-synced this file. See ADR-0001, the first ADR in this repo (`.session/specs/adr/` created), for the decision and its partial reversal of the 2026-08-08 graph out-of-scope rule. Two handoff premises were wrong: `pyproject.toml` already existed (so the code is a subpackage, not a `src/` dist), and the checkout is `~/develop/`, not `~/Projects/`. Rollout to other repos was out of scope.

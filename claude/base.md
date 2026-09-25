@@ -293,22 +293,79 @@ implementation sessions (Claude Code).
 - ADRs are for durable/architectural decisions. Routine fixes and minor refactors
   belong in the Review Log only.
 
+### Session Files
+
+A session file is one markdown file with two machine-readable parts, validated by
+`session-lint` against the schema in dev-standards (`dev_standards/session_schema/`):
+
+- **YAML frontmatter** (`schema_version: 1`, `id` = filename stem, `title`, `status`,
+  `status_reason`, `created`, `repos` with exactly one `primary`, `branch`, `links`).
+  `status` is `draft | active | blocked | complete | superseded | abandoned`;
+  `blocked`/`abandoned` need a `status_reason`. A file without frontmatter is legacy.
+- **One `## Ledger` section** holding exactly one ` ```yaml session-ledger ` fence with
+  typed lists (IDs in brackets):
+
+  | Key | Holds |
+  |---|---|
+  | `runs` | one entry per sitting: `date`, `surface`, `summary`, `commits` (`repo@sha`) |
+  | `outcome` | `met \| partial \| not_met \| abandoned`, plus a note |
+  | `decisions` [D] | `proposed \| accepted \| rejected`; `origin: user \| agent \| carried` (`carried` needs `carried_from`); `answers`, `supersedes`, `adr` |
+  | `questions` [Q] | `open \| resolved \| deferred`; resolved needs `resolution` or an answering decision |
+  | `findings` [F] | `bug \| premise_invalid \| confirmation \| drift` |
+  | `checks` [C] | `pending \| pass \| fail \| not_run`; `fail`/`not_run` need a `reason` |
+  | `debt` [T] | `this_repo \| other_repo \| platform` (`other_repo` needs `target_repo`) |
+  | `blockers` [B] | `kind`, `owner`, `open \| cleared` |
+  | `produced` | artifacts created: `kind` (graph label, e.g. `ShellScript`), `ref`, `repo` |
+
+- **IDs and references.** Items are `D1`, `Q1`, `F1`, `C1`, `T1`, `B1` within a file.
+  Same-file refs are `#Q1`; cross-file refs are always qualified
+  `<repo>/<session-id>#Q1`, and session refs are `<repo>/<session-id>`.
+- **Links point backward in time. Never edit a closed file to record what happened
+  later.** A newer file's decision `answers` or `supersedes` an item in an older
+  file; "resolved"/"superseded" is derived from those incoming links. That is why a
+  decision has no `superseded` status.
+- **Locked decisions live in the ledger**, as `origin: user` or `origin: carried`
+  entries. Context prose refers to them by ID rather than restating them.
+- YAML keys are snake_case. Never parse these blocks with regex. Locate them, then
+  `yaml.safe_load` them.
+- The published JSON Schemas (`schemas/session-header.v1.schema.json`,
+  `schemas/session-ledger.v1.schema.json` in dev-standards) capture shape and enums
+  only. Cross-field rules (id/date match, one primary repo, same-file refs, status
+  vs. ledger contents) are enforced only by `session-lint`, so JSON Schema
+  validation is necessary but not sufficient.
+
+Run the linter from any repo (exit 1 on any error):
+
+```sh
+uvx --from git+https://github.com/pdrangeid/dev-standards@develop session-lint .session/
+# No GitHub access: use a local checkout
+uvx --from ~/develop/dev-standards session-lint .session/
+```
+
+It lints `*.md` recursively, skipping `_template.md`, `specs/` and `archive/`.
+Legacy files are reported as info (`--strict` makes them errors).
+
 ### Starting a Claude Code Session
 
 At the start of every session, before touching any code:
 
 1. Read `AGENTS.md` (always)
-2. Check for a session file: `ls .session/` — if a dated `.md` file exists and is `Status: active`, read it
-3. Skim `specs/adr/index.md` if it exists; open only the ADRs the session file
+2. Check for a session file: `ls .session/`. If a dated `.md` file has `status: draft`
+   or `active` in its frontmatter (legacy files: a `Status:` line), read it
+3. For a conforming file, set `status: active` and append a `runs` entry (`date`,
+   `surface`, a placeholder `summary`)
+4. Skim `specs/adr/index.md` if it exists; open only the ADRs the session file
    references or that the index shows are relevant (skip `superseded`/`deprecated`)
-4. Confirm your understanding of the **Goal** and **Constraints** before proceeding
+5. Confirm your understanding of the **Goal** and **Constraints** before proceeding
 
 If no session file exists, ask the user if there's a session to load or proceed with
 their in-chat instructions.
 
 ### During a Session
 
-- Append decisions, discoveries, and deviations to `## Decisions Made This Session`
+- Record decisions, questions, findings, checks, debt and blockers in the `## Ledger`
+  block as they happen, with the next free ID of each kind (legacy files: append to
+  `## Decisions Made This Session`)
 - If a constraint or out-of-scope boundary is hit, surface it explicitly rather than silently working around it
 - Do not modify `_template.md` — copy it, rename it, then edit the copy
 
@@ -316,13 +373,17 @@ their in-chat instructions.
 
 When the user signals the session is complete:
 
-1. Update `Status:` to `complete` in the session file
+1. Close the ledger: fill this run's `summary` and `commits`, set every check's
+   `result`, set `outcome`, and set the final `status` (`complete`, or `blocked` /
+   `abandoned` with a `status_reason`). Then run `session-lint` on the file; it must
+   pass. (Legacy file: update its `Status:` line instead.)
 2. Identify any decisions that should be promoted to an ADR (durable/architectural)
    or to `AGENTS.md` (conventions every session must know)
 3. Offer to write them: each durable decision gets a new numbered file in
    `specs/adr/` copied from `_template.md` — not a freeform addition to a baseline doc
 4. Append each new ADR to `specs/adr/index.md`; if it supersedes an earlier ADR,
-   update that ADR's `Status:` line and its index row
+   update that ADR's `Status:` line and its index row. A ledger decision that gets
+   an ADR carries an `adr: ADR-NNNN` pointer
 5. **Update `AGENTS.md`:**
    - Append an entry to the **Review Log**. Shape: `**YYYY-MM-DD — Title**` followed
      by one paragraph covering what was built, what changed, and any bugs fixed.
