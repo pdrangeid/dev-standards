@@ -66,6 +66,28 @@ def test_legacy_file_is_info_and_error_when_strict():
     assert issue.severity == "error"
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "2026-06-30-multi-account-google-integration",  # Status:/Date: frontmatter
+        "2026-05-08-lifeos-ingestor-salesforce-opp-contatct-patch",  # title/date
+    ],
+)
+def test_pre_schema_frontmatter_is_legacy(name):
+    (issue,) = validate_session(FIXTURES / f"{name}.md")
+    assert (issue.severity, issue.rule) == ("info", "legacy")
+    assert "no schema_version" in issue.message
+    (issue,) = validate_session(FIXTURES / f"{name}.md", strict=True)
+    assert issue.severity == "error"
+
+
+def test_conforming_file_with_bad_header_yaml_is_an_error(tmp_path):
+    text = MINIMAL.read_text().replace("title: Minimal draft session", "title: [oops")
+    path = tmp_path / MINIMAL.name
+    path.write_text(text)
+    assert "header-yaml" in rules(validate_session(path), "error")
+
+
 def test_body_status_line_is_warning_only():
     issues = validate_session(FIXTURES / "2026-09-25-legacy-status-line.md")
     assert [(i.severity, i.rule) for i in issues] == [("warning", "legacy-status-line")]

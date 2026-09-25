@@ -301,7 +301,8 @@ A session file is one markdown file with two machine-readable parts, validated b
 - **YAML frontmatter** (`schema_version: 1`, `id` = filename stem, `title`, `status`,
   `status_reason`, `created`, `repos` with exactly one `primary`, `branch`, `links`).
   `status` is `draft | active | blocked | complete | superseded | abandoned`;
-  `blocked`/`abandoned` need a `status_reason`. A file without frontmatter is legacy.
+  `blocked`/`abandoned` need a `status_reason`. A file with no frontmatter, or with
+  older frontmatter that has no `schema_version`, is legacy.
 - **One `## Ledger` section** holding exactly one ` ```yaml session-ledger ` fence with
   typed lists (IDs in brackets):
 
@@ -351,7 +352,7 @@ At the start of every session, before touching any code:
 
 1. Read `AGENTS.md` (always)
 2. Check for a session file: `ls .session/`. If a dated `.md` file has `status: draft`
-   or `active` in its frontmatter (legacy files: a `Status:` line), read it
+   or `active` in its frontmatter (legacy files: a `Status:`/`status:` line), read it
 3. For a conforming file, set `status: active` and append a `runs` entry (`date`,
    `surface`, a placeholder `summary`)
 4. Skim `specs/adr/index.md` if it exists; open only the ADRs the session file

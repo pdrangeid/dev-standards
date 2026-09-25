@@ -75,7 +75,7 @@ def _strip_fenced(text: str) -> str:
 
 
 def validate_session(path: Path, strict: bool = False) -> list[LintIssue]:
-    """Lint one session file. ``strict`` makes a missing frontmatter an error."""
+    """Lint one session file. ``strict`` makes a legacy (pre-schema) file an error."""
     parsed = parse_session(path)
     issues: list[LintIssue] = []
 
@@ -84,7 +84,7 @@ def validate_session(path: Path, strict: bool = False) -> list[LintIssue]:
             LintIssue(
                 Severity.error if strict else Severity.info,
                 "legacy",
-                "no frontmatter; treated as a legacy session file",
+                f"{parsed.legacy_reason}; treated as a legacy session file",
                 1,
             )
         )

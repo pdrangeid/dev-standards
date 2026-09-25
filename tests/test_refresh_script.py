@@ -121,3 +121,43 @@ def test_legacy_migration_also_syncs_scaffold(tmp_path):
     assert (tmp_path / "AGENTS.md").read_text().endswith(PROJECT_SPECIFIC)
     assert (tmp_path / ".session/_template.md").is_file()
     assert (tmp_path / ".session/specs/adr/index.md").is_file()
+
+
+def test_project_specific_trailing_blank_lines_survive(tmp_path):
+    tail = PROJECT_SPECIFIC + "\n\n"
+    (tmp_path / "AGENTS.md").write_text(HEADER + "old\n\n" + tail)
+    assert run(tmp_path).returncode == 0
+    assert (tmp_path / "AGENTS.md").read_text().endswith("\n---\n\n" + tail)
+
+
+def test_migration_repoints_symlinks_at_claude_md(tmp_path):
+    (tmp_path / "claude.md").write_text(HEADER + "old\n\n" + PROJECT_SPECIFIC)
+    (tmp_path / "GEMINI.md").symlink_to("claude.md")
+    (tmp_path / "OTHER.md").symlink_to("README.md")  # unrelated: left alone
+
+    dry = run(tmp_path, "--dry-run")
+    assert "[DRY-RUN] Would repoint: ./GEMINI.md -> AGENTS.md" in dry.stdout
+    assert os.readlink(tmp_path / "GEMINI.md") == "claude.md"
+
+    assert run(tmp_path).returncode == 0
+    assert os.readlink(tmp_path / "GEMINI.md") == "AGENTS.md"
+    assert (tmp_path / "GEMINI.md").read_text().endswith(PROJECT_SPECIFIC)
+    assert os.readlink(tmp_path / "OTHER.md") == "README.md"
+
+
+def test_refresh_repairs_symlink_left_dangling_by_earlier_migration(project):
+    (project / "GEMINI.md").symlink_to("claude.md")
+    result = run(project)
+    assert result.returncode == 0
+    assert "Repointed ./GEMINI.md -> AGENTS.md" in result.stdout
+    assert os.readlink(project / "GEMINI.md") == "AGENTS.md"
+
+
+def test_refresh_leaves_symlink_alone_while_claude_md_exists(project):
+    (project / "claude.md").write_text("still here, not legacy-generated\n")
+    (project / "GEMINI.md").symlink_to("claude.md")
+    for args in ((), ("--dry-run",)):
+        result = run(project, *args)
+        assert result.returncode == 0, result.stdout
+        assert "epoint" not in result.stdout
+    assert os.readlink(project / "GEMINI.md") == "claude.md"

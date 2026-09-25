@@ -37,6 +37,7 @@ class ParsedSession:
     path: Path
     is_legacy: bool
     body_text: str
+    legacy_reason: str | None = None
     body_offset: int = 0  # number of file lines before body_text
     header: YamlBlock | None = None
     ledger: YamlBlock | None = None
@@ -108,9 +109,23 @@ def parse_session(path: Path) -> ParsedSession:
         else:
             header = _load_block("\n".join(lines[1:close]) + "\n", 2, "header", errors)
             body_start = close + 1
+            # Pre-schema files often carry their own frontmatter (Status:/Date:/title:);
+            # schema_version is what marks a file as conforming.
+            if header is not None and not (
+                isinstance(header.data, dict) and "schema_version" in header.data
+            ):
+                logger.debug(f"{path}: frontmatter has no schema_version, legacy")
+                return ParsedSession(
+                    path=path,
+                    is_legacy=True,
+                    body_text=text,
+                    legacy_reason="frontmatter has no schema_version",
+                )
     else:
         logger.debug(f"{path}: no frontmatter on line 1, treating as legacy")
-        return ParsedSession(path=path, is_legacy=True, body_text=text)
+        return ParsedSession(
+            path=path, is_legacy=True, body_text=text, legacy_reason="no frontmatter"
+        )
 
     parsed = ParsedSession(
         path=path,

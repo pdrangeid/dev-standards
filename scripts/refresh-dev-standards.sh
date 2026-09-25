@@ -16,6 +16,8 @@
 #        .session/specs/adr/index.md    created only if missing (project data)
 #        .session/archive/.gitkeep      created only if archive/ is missing
 #      Session files themselves are never touched.
+#   6. Repoints any symlink next to AGENTS.md that still targets a missing
+#      claude.md (e.g. GEMINI.md -> claude.md) at AGENTS.md.
 #
 #   If a legacy claude.md is found instead of AGENTS.md (or claude.md's header
 #   still names the old refresh-claude.sh script), this script migrates the
@@ -150,6 +152,24 @@ apply_session_scaffold() {
     fi
 }
 
+# Repoint symlinks beside AGENTS.md that still target a missing claude.md
+# (hand-rolled bridges such as GEMINI.md -> claude.md) at AGENTS.md.
+# Pass "migrating" when claude.md is being (or, in a dry run, would be) removed.
+repoint_legacy_symlinks() {
+    local link
+    [ "${1:-}" != migrating ] && [ -e "$LEGACY_CLAUDE_MD" ] && return
+    for link in "$AGENTS_DIR"/* "$AGENTS_DIR"/.[!.]*; do
+        [ -L "$link" ] || continue
+        [ "$(readlink "$link")" = "claude.md" ] || continue
+        if [ "$DRY_RUN" = true ]; then
+            echo "  [DRY-RUN] Would repoint: $link -> AGENTS.md"
+        else
+            ln -sfn AGENTS.md "$link"
+            echo "  🔗 Repointed $link -> AGENTS.md"
+        fi
+    done
+}
+
 # True if $1 is exactly the generated CLAUDE.md stub: "@AGENTS.md", a blank
 # line, then "## Claude Code" (anything after that is user content).
 matches_known_stub_pattern() {
@@ -213,6 +233,7 @@ run_migration() {
     fi
 
     local boundary_line
+    SOURCE_MD="$LEGACY_CLAUDE_MD"
     boundary_line=$(grep -n "^## Project-Specific" "$LEGACY_CLAUDE_MD" | head -1 | cut -d: -f1)
     if [ -z "$boundary_line" ]; then
         echo "❌ Could not find '## Project-Specific' section in $LEGACY_CLAUDE_MD"
@@ -221,8 +242,6 @@ run_migration() {
     fi
     echo "📍 Project-Specific section starts at line $boundary_line"
 
-    local project_specific
-    project_specific=$(tail -n +"$boundary_line" "$LEGACY_CLAUDE_MD")
 
     FETCH_FAILED=false
     local tmp_file
@@ -234,7 +253,7 @@ run_migration() {
     fetch_session_templates "$tpl_dir"
 
     printf "\n---\n\n" >> "$tmp_file"
-    echo "$project_specific" >> "$tmp_file"
+    tail -n +"$boundary_line" "$SOURCE_MD" >> "$tmp_file"  # byte-for-byte
 
     if [ "$FETCH_FAILED" = true ]; then
         echo ""
@@ -255,6 +274,7 @@ run_migration() {
         echo ""
         apply_session_scaffold "$tpl_dir"
         rm -rf "$tpl_dir"
+        repoint_legacy_symlinks migrating
         echo ""
         echo "  [DRY-RUN] Migration complete — no files were written"
         echo ""
@@ -274,6 +294,7 @@ run_migration() {
     echo ""
     apply_session_scaffold "$tpl_dir"
     rm -rf "$tpl_dir"
+    repoint_legacy_symlinks migrating
 
     echo ""
     echo "✅ Migrated: claude.md -> AGENTS.md; CLAUDE.md created/updated (see above)"
@@ -315,6 +336,7 @@ run_normal_refresh() {
     fi
 
     local boundary_line
+    SOURCE_MD="$AGENTS_MD"
     boundary_line=$(grep -n "^## Project-Specific" "$AGENTS_MD" | head -1 | cut -d: -f1)
     if [ -z "$boundary_line" ]; then
         echo "❌ Could not find '## Project-Specific' section in $AGENTS_MD"
@@ -323,8 +345,6 @@ run_normal_refresh() {
     fi
     echo "📍 Project-Specific section starts at line $boundary_line"
 
-    local project_specific
-    project_specific=$(tail -n +"$boundary_line" "$AGENTS_MD")
 
     FETCH_FAILED=false
     local tmp_file
@@ -336,7 +356,7 @@ run_normal_refresh() {
     fetch_session_templates "$tpl_dir"
 
     printf "\n---\n\n" >> "$tmp_file"
-    echo "$project_specific" >> "$tmp_file"
+    tail -n +"$boundary_line" "$SOURCE_MD" >> "$tmp_file"  # byte-for-byte
 
     if [ "$FETCH_FAILED" = true ]; then
         echo ""
@@ -362,6 +382,7 @@ run_normal_refresh() {
     echo ""
     apply_session_scaffold "$tpl_dir"
     rm -rf "$tpl_dir"
+    repoint_legacy_symlinks
     echo ""
 }
 

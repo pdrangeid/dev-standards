@@ -133,6 +133,7 @@ It also brings the project's `.session/` scaffold up to date (next to `AGENTS.md
 | `.session/specs/adr/index.md` | Created only if missing — it holds the project's ADR rows |
 | `.session/archive/.gitkeep` | Created only if `archive/` is missing |
 | `.session/YYYY-MM-DD-*.md` | Never touched; old files stay legacy until backfilled |
+| Symlinks beside `AGENTS.md` pointing at a missing `claude.md` (e.g. `GEMINI.md`) | Repointed at `AGENTS.md` |
 
 All templates are fetched before anything is written, so a failed fetch changes nothing.
 Set `DEV_STANDARDS_RAW` to fetch from another branch or a local checkout, e.g.
@@ -302,7 +303,8 @@ uv run session-schema export --out schemas/   # regenerate the JSON Schemas afte
 ```
 
 - A directory is linted recursively (`*.md`), skipping `_template.md`, `specs/` and `archive/`.
-- Files with no frontmatter are **legacy**: reported as `info`, or as errors with `--strict`.
+- Files with no frontmatter, or with older frontmatter lacking `schema_version`, are **legacy**:
+  reported as `info`, or as errors with `--strict`.
 - Warnings (a leftover `Status:` line, the old "Decisions Made This Session" heading, `active`
   with no runs) never fail the run.
 - The Pydantic models in `dev_standards/session_schema/models.py` are the source of truth.
