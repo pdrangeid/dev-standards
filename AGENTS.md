@@ -448,7 +448,7 @@ dev-standards is a centralized scaffolding and standards repo for a Python/Neo4j
 ecosystem. Primary deliverables are two bash scripts and a set of modular AGENTS.md content files:
 
 - `scripts/setup-project.sh` — scaffolds a new Python project (repo, venv, structure, `AGENTS.md` + `CLAUDE.md`)
-- `scripts/refresh-dev-standards.sh` — re-fetches base+modules from GitHub and updates downstream `AGENTS.md` files (and self-migrates any legacy `claude.md` project it finds)
+- `scripts/refresh-dev-standards.sh` — re-fetches base+modules from GitHub and updates downstream `AGENTS.md` files (and self-migrates any legacy `claude.md` project it finds), then syncs the `.session/` scaffold (templates replaced, `specs/adr/index.md` and `archive/` created only if missing)
 - `claude/base.md` + `claude/modules/*.md` — composable standards content fetched at scaffold time
 - `project-templates/` — reference templates for pyproject.toml, config.yaml, ARCHITECTURE.md, workspace.yaml
 - `dev_standards/workspace/` + `dev-standards workspace new|render|check` — Python CLI that scaffolds and maintains multi-repo Claude Code workspaces from a `workspace.yaml` (see README `## Multi-Repo Workspaces`)
@@ -469,7 +469,7 @@ functionality and are additive — they do not replace or wrap the scripts.
 - Registry: an LLM only *describes* a repo (prompt on stdin, run from an empty temp dir); Python validates and writes. Idempotency is a `generated_from` source-doc hash, not LLM determinism, so unchanged repos cost no LLM call. The workspace consumer contract in `workspace/registry.py` (per-repo dict with `purpose`, aggregate list of `{repo, purpose}`) is locked; the hub needs no consumer changes because symlinks resolve transparently
 - Workspaces: `workspace.yaml` is the source of truth; `render`/`check` share one desired-state plan (`workspace/render.py`), so re-render is idempotent and drift reporting matches render. The workspace `AGENTS.md` is marker-delimited (`<!-- BEGIN/END GENERATED: name -->`), reads the same `claude/` fragments from a local editable checkout, and must not be run through `refresh-dev-standards.sh`. `claude/modules/workspace.md` is deliberately absent from `setup-project.sh`'s module menu
 - Session schema: the Pydantic models are the source of truth; `schemas/*.json` are generated (`uv run session-schema export --out schemas/`) and `tests/test_schema_drift.py` fails if they're stale — regenerate and commit both after any model change. Parsing locates blocks with a fence-aware line scan, then `yaml.safe_load`; a schema change means `schema_version: 2` and new files, never an edit to v1
-- Both scripts default `DEV_STANDARDS_RAW` to the `develop` branch (a `main` URL is built but only used if the `develop` line is commented back out manually) — intentional for now so consumers get in-flight standards updates before they're merged to `main`; no `--branch` flag exists yet (see Recommendations)
+- Both scripts default `DEV_STANDARDS_RAW` to the `develop` branch — intentional for now so consumers get in-flight standards updates before they're merged to `main`. It can be overridden from the environment (any branch URL, or `file://…/claude` for a local checkout, which `tests/test_refresh_script.py` uses); no `--branch` flag exists yet (see Recommendations)
 
 ### Technical Debt
 
@@ -481,7 +481,6 @@ functionality and are additive — they do not replace or wrap the scripts.
 - `project-templates/ARCHITECTURE.md.template` — pre-fills manifest-analyzer directory structure (models/, parsers/, exporters/), too opinionated for a generic scaffold
 - Two template systems exist with no sync mechanism: `project-templates/*.template` (Jinja-style `{{}}`) and heredocs in `setup-project.sh` (bash `${}`) — content has drifted between them
 - `refresh-dev-standards.sh`'s migration path only knows about the `claude.md`/`AGENTS.md`/`CLAUDE.md` triplet — a project with an existing symlink pointing at `claude.md` (e.g. a hand-rolled `GEMINI.md -> claude.md`, seen in `datasource-graph-analyzer`) is left dangling after migration and must be repointed manually. Not generalized into the script; worth revisiting if this pattern recurs across more than one or two projects.
-- `scripts/setup-project.sh` (Phase 3.5) — `SESSION_TEMPLATE_URL` is hardcoded to `main` while the ADR templates and `AGENTS.md` fetch from `develop`; the two should share `DEV_STANDARDS_RAW` (and the `--branch` flag recommendation)
 - `.mcp.json` rendered by `dev-standards workspace` embeds the absolute workspace path (for `uvx --env-file`), so re-rendering on another machine changes a committed file; a relative `.env` would avoid it but is unverified against Claude Code's MCP working directory
 - `dev_standards/workspace/models.py` `KNOWN_SERVERS` holds the MCP env/tool contract for exactly one package (`neo4j-mcp-server`); adding another server means adding a profile
 - `dev_standards/main.py`'s `run` stub is still a placeholder command
@@ -492,16 +491,15 @@ functionality and are additive — they do not replace or wrap the scripts.
 
 ### Next Steps
 
-1. **Roll out the session-file format** with `refresh-dev-standards.sh` in each downstream repo (next session). The GitHub `uvx --from git+https://github.com/pdrangeid/dev-standards@develop session-lint` invocation was verified 2026-09-25 from `lifeos-hostops` after the merge (check C6 of `.session/2026-09-25-dev-standards-session-file-schema.md`; exit codes, JSON output and schema export all correct). New projects only get the template after `develop` → `main`, because `setup-project.sh` fetches it from `main`
+1. **Roll out the session-file format** — run `refresh-dev-standards.sh` in each downstream repo (next session); it now updates `AGENTS.md` and the `.session/` scaffold together. The GitHub `uvx --from git+https://github.com/pdrangeid/dev-standards@develop session-lint` invocation was verified 2026-09-25 from `lifeos-hostops` (check C6 of `.session/2026-09-25-dev-standards-session-file-schema.md`)
 2. **Test the workspace tool on `cranston-llm`** — the user will run it there (install with `uv pip install -e .[dev]`, copy `project-templates/workspace.yaml.template` to the `lifeos-logwatch-hostops-refactor` folder as `workspace.yaml`, `dev-standards workspace render`, commit with `Session: 2026-09-20-workspace-module`, add the `sudo crontab -l -u llmadmin` note under `## Notes`); fix whatever it turns up. `lifeos-hostops`/`lifeos-logwatch` were never available on pmd-office, so the real-folder regeneration is unverified
 3. **Move or delete historical artifacts** — `claude.md.monolith` and `claude-code-session-starter.md`
 4. **Remove the `rich<14` upper-bound pin** from `pyproject.toml` and the `setup-project.sh` heredoc (see Recommendations)
 5. **Adopt the registry on real repos and schedule it** — `dev-standards registry add <repo>` per repo (this regenerates via the LLM; decide whether to seed from the existing `~/Projects` files instead), point `registry_dir` at `~/.repository_registry`, then schedule a weekly `registry refresh` under `run_uv_script.sh`. Point the Mermaid flowchart script at the hub's `registry.yaml`
-6. **Add bats/shellspec tests** for `--dry-run` mode — the flag exists precisely to enable testability; the migration and idempotency paths in `refresh-dev-standards.sh` were verified manually this session in a scratch sandbox and against `datasource-graph-analyzer` but have no automated coverage
+6. **Add automated tests for `setup-project.sh`** — `refresh-dev-standards.sh` is now covered by `tests/test_refresh_script.py` (pytest driving the real script with a `file://` `DEV_STANDARDS_RAW`); the same pattern should cover `setup-project.sh --dry-run` and Phase 3.5
 7. **Verify AGENTS.md auto-discovery** in Cursor/Windsurf/Cline/Codex before creating any tool-specific bridge file beyond `CLAUDE.md` — deferred from the `AGENTS.md` migration session, still unverified
-8. **Seed `specs/adr/` and `archive/` from `refresh-dev-standards.sh`** — the ADR/Review-Log convention shipped in `base.md` and `setup-project.sh`, but existing projects only get the new text on refresh; the directories/templates are created by the agent on demand, not by the script
-9. **Migrate remaining downstream projects** off `claude.md` — only `datasource-graph-analyzer` has been migrated so far; every other project pulling from this repo still has a legacy `claude.md` until someone runs `refresh-dev-standards.sh` in it
-10. **Convert legacy `[topic]-baseline.md` specs to ADRs** per downstream project, when convenient — deliberately not done in the ADR adoption session
+8. **Migrate remaining downstream projects** off `claude.md` — only `datasource-graph-analyzer` has been migrated so far; every other project pulling from this repo still has a legacy `claude.md` until someone runs `refresh-dev-standards.sh` in it
+9. **Convert legacy `[topic]-baseline.md` specs to ADRs** per downstream project, when convenient — deliberately not done in the ADR adoption session
 
 ### Architectural Notes
 
@@ -515,7 +513,7 @@ functionality and are additive — they do not replace or wrap the scripts.
 - Reconcile or document the two template systems — if `project-templates/` is authoritative, setup-project.sh should read from those files rather than embedding duplicate content as heredocs
 - Consider adding a `--branch` flag to both scripts to make the `develop`-by-default behavior explicit and overridable, rather than requiring someone to hand-edit the script to point at `main`
 - Remove the `rich` upper-bound pin (`<14.0`) from both pyproject.toml and the inline heredoc template in setup-project.sh
-- Add shell tests (bats) covering at minimum: `setup-project.sh --dry-run` with all required args, `refresh-dev-standards.sh --dry-run` against both a known `AGENTS.md` fixture and a legacy `claude.md` fixture (migration path)
+- Add shell tests covering `setup-project.sh --dry-run` with all required args, following `tests/test_refresh_script.py` (which already covers refresh, dry run, and the legacy `claude.md` migration path)
 
 ### Review Log
 
@@ -535,3 +533,7 @@ Completed `.session/2026-09-20-repo-registry-generator.md`. Added `dev-standards
 **2026-09-25 — Governed session-file schema**
 
 Completed `.session/2026-09-25-dev-standards-session-file-schema.md`, the first session file written in the new format. Added `dev_standards/session_schema/`: Pydantic models for the frontmatter header and the `## Ledger` block, a fence-aware parser, `session-lint` (exit 1 on error, `--strict`, `--format json`, a plain `SUMMARY` log line) and `session-schema export`. Also added committed `schemas/session-{header,ledger}.v1.schema.json` behind a drift test, and 14 fixtures and 75 tests (159 total). Replaced `claude/session-template.md` and the `setup-project.sh` fallback stub, renamed "Decisions Made This Session" to `## Ledger` everywhere it was referenced, rewrote `base.md`'s session-workflow text (new Session Files subsection, run entries at start, lint at close) and re-synced this file. See ADR-0001, the first ADR in this repo (`.session/specs/adr/` created), for the decision and its partial reversal of the 2026-08-08 graph out-of-scope rule. Two handoff premises were wrong: `pyproject.toml` already existed (so the code is a subpackage, not a `src/` dist), and the checkout is `~/develop/`, not `~/Projects/`. README (`## Session Files and session-lint`), `docs/usage_instructions.md` and `ARCHITECTURE.md` document the new CLI. Rollout to other repos was out of scope.
+
+**2026-09-25 — Refresh syncs the `.session/` scaffold**
+
+`refresh-dev-standards.sh` now brings each project's `.session/` up to date on both the refresh and the migration path, so a refreshed repo can't end up with new `AGENTS.md` text next to an old session template. `_template.md` and `specs/adr/_template.md` are replaced when they differ; `specs/adr/index.md` and `archive/.gitkeep` are only created if missing; session files are never touched. The templates are fetched together with `base.md` before any write, so a failed fetch changes nothing. `DEV_STANDARDS_RAW` can now be overridden from the environment in both scripts, and `setup-project.sh` fetches the session template from the same branch as everything else (it was hardcoded to `main`, clearing that Tech Debt item and the former "seed `specs/adr/`" Next Step). Added `tests/test_refresh_script.py` (6 tests running the real script against `file://` sources: full scaffold, replace-vs-preserve, idempotent second run, dry run, failed fetch, legacy migration), the first automated coverage of either bash script.

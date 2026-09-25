@@ -124,6 +124,20 @@ refresh-standards --agents-md /path/to/AGENTS.md
 written by `setup-project.sh`, re-fetches those exact modules, and replaces
 everything above `## Project-Specific` — leaving your project-specific notes untouched.
 
+It also brings the project's `.session/` scaffold up to date (next to `AGENTS.md`):
+
+| Path | On refresh |
+|---|---|
+| `.session/_template.md` | Replaced if it differs from `claude/session-template.md` (canonical — don't edit it) |
+| `.session/specs/adr/_template.md` | Replaced if it differs from `claude/adr-template.md` |
+| `.session/specs/adr/index.md` | Created only if missing — it holds the project's ADR rows |
+| `.session/archive/.gitkeep` | Created only if `archive/` is missing |
+| `.session/YYYY-MM-DD-*.md` | Never touched; old files stay legacy until backfilled |
+
+All templates are fetched before anything is written, so a failed fetch changes nothing.
+Set `DEV_STANDARDS_RAW` to fetch from another branch or a local checkout, e.g.
+`DEV_STANDARDS_RAW=file://$HOME/develop/dev-standards/claude refresh-standards`.
+
 ### Migrating an Older Project (`claude.md` → `AGENTS.md`)
 
 Projects scaffolded before this repo switched to `AGENTS.md` still have a `claude.md`.

@@ -47,7 +47,7 @@ models.py ──export──▶ schemas/*.v1.schema.json ──▶ external cons
 | Component | Responsibility | Key Logic |
 |:---|:---|:---|
 | `scripts/setup-project.sh` | Scaffold a new project | Fetch base + modules, write `AGENTS.md`, create `.session/` |
-| `scripts/refresh-dev-standards.sh` | Update a project's `AGENTS.md` | Split on `## Project-Specific`; legacy `claude.md` migration |
+| `scripts/refresh-dev-standards.sh` | Update a project's `AGENTS.md` and `.session/` scaffold | Split on `## Project-Specific`; legacy `claude.md` migration; templates fetched before any write, replaced if different; `index.md` / `archive/` created only if missing |
 | `claude/` | Fragment library | `base.md`, `modules/*.md`, session and ADR templates |
 | `dev_standards/main.py` | CLI entry point | Typer app; registers the `workspace` and `registry` sub-apps (`session-lint` / `session-schema` are separate console scripts) |
 | `workspace/models.py` | Validate `workspace.yaml` | Pydantic; absolute `repos_root`, non-empty `graph.database`, repo dirs exist, pinned MCP version; `KNOWN_SERVERS` env/tool contract |

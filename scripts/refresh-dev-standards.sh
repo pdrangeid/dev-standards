@@ -10,6 +10,12 @@
 #   2. Re-fetches base.md + all listed modules from dev-standards (GitHub raw)
 #   3. Replaces everything above "## Project-Specific" with fresh content
 #   4. Leaves everything at and below "## Project-Specific" untouched
+#   5. Syncs the .session/ scaffold next to AGENTS.md:
+#        .session/_template.md          replaced if it differs (canonical copy)
+#        .session/specs/adr/_template.md replaced if it differs (canonical copy)
+#        .session/specs/adr/index.md    created only if missing (project data)
+#        .session/archive/.gitkeep      created only if archive/ is missing
+#      Session files themselves are never touched.
 #
 #   If a legacy claude.md is found instead of AGENTS.md (or claude.md's header
 #   still names the old refresh-claude.sh script), this script migrates the
@@ -19,6 +25,7 @@
 #   project is migrated, later runs take the normal refresh path.
 #
 # Run from your project root, or pass --agents-md <path> explicitly.
+# Set DEV_STANDARDS_RAW to fetch from elsewhere (e.g. file:///path/to/claude).
 # =============================================================================
 
 set -euo pipefail
@@ -28,7 +35,7 @@ AGENTS_MD="AGENTS.md"
 DRY_RUN=false
 DEV_STANDARDS_RAW_MAIN="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
 DEV_STANDARDS_RAW_DEV="https://raw.githubusercontent.com/pdrangeid/dev-standards/develop/claude"
-DEV_STANDARDS_RAW="$DEV_STANDARDS_RAW_DEV"  # default to develop branch for latest updates
+DEV_STANDARDS_RAW="${DEV_STANDARDS_RAW:-$DEV_STANDARDS_RAW_DEV}"  # default to develop branch for latest updates
 #DEV_STANDARDS_RAW="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
 
 # --- Flag parsing ------------------------------------------------------------
@@ -50,6 +57,9 @@ done
 AGENTS_DIR="$(dirname "$AGENTS_MD")"
 LEGACY_CLAUDE_MD="${AGENTS_DIR}/claude.md"
 CLAUDE_MD_STUB="${AGENTS_DIR}/CLAUDE.md"
+SESSION_DIR="${AGENTS_DIR}/.session"
+ADR_DIR="${SESSION_DIR}/specs/adr"
+ARCHIVE_DIR="${SESSION_DIR}/archive"
 
 # --- Shared helpers ------------------------------------------------------------
 
@@ -84,6 +94,60 @@ AGENTSHEADER
             FETCH_FAILED=true
         fi
     done
+}
+
+# Fetch the .session/ scaffold templates into directory $1.
+# Sets FETCH_FAILED=true on any failed fetch.
+fetch_session_templates() {
+    local dir="$1" src
+    for src in session-template.md adr-template.md adr-index-template.md; do
+        if curl -fsSL "${DEV_STANDARDS_RAW}/${src}" -o "${dir}/${src}" 2>/dev/null; then
+            echo "  ✅ Fetched ${src}"
+        else
+            echo "  ❌ Failed to fetch ${src} from ${DEV_STANDARDS_RAW}"
+            FETCH_FAILED=true
+        fi
+    done
+}
+
+# Copy fetched template $1 to $2 if missing or different; $3 = "replace" or
+# "create" (create never overwrites an existing file).
+sync_file() {
+    local src="$1" dest="$2" mode="$3"
+    if [ -f "$dest" ]; then
+        if [ "$mode" = create ] || cmp -s "$src" "$dest"; then
+            echo "  ✔  $dest unchanged"
+            return
+        fi
+        local verb="update"
+    else
+        local verb="create"
+    fi
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [DRY-RUN] Would ${verb}: $dest"
+    else
+        mkdir -p "$(dirname "$dest")"
+        cp "$src" "$dest"
+        echo "  ✅ ${verb^}d $dest"
+    fi
+}
+
+# Bring .session/ in line with the templates fetched into directory $1.
+apply_session_scaffold() {
+    local dir="$1"
+    echo "Syncing .session/ scaffold..."
+    sync_file "${dir}/session-template.md" "${SESSION_DIR}/_template.md" replace
+    sync_file "${dir}/adr-template.md" "${ADR_DIR}/_template.md" replace
+    sync_file "${dir}/adr-index-template.md" "${ADR_DIR}/index.md" create
+    if [ -d "$ARCHIVE_DIR" ]; then
+        echo "  ✔  $ARCHIVE_DIR/ exists"
+    elif [ "$DRY_RUN" = true ]; then
+        echo "  [DRY-RUN] Would create: $ARCHIVE_DIR/.gitkeep"
+    else
+        mkdir -p "$ARCHIVE_DIR"
+        touch "$ARCHIVE_DIR/.gitkeep"
+        echo "  ✅ Created $ARCHIVE_DIR/.gitkeep"
+    fi
 }
 
 # True if $1 is exactly the generated CLAUDE.md stub: "@AGENTS.md", a blank
@@ -165,6 +229,9 @@ run_migration() {
     tmp_file=$(mktemp)
     echo "Fetching updated standards from dev-standards..."
     fetch_fresh_content "$modules_string" "$tmp_file"
+    local tpl_dir
+    tpl_dir=$(mktemp -d)
+    fetch_session_templates "$tpl_dir"
 
     printf "\n---\n\n" >> "$tmp_file"
     echo "$project_specific" >> "$tmp_file"
@@ -186,6 +253,9 @@ run_migration() {
         head -30 "$tmp_file" | sed 's/^/    /'
         rm -f "$tmp_file"
         echo ""
+        apply_session_scaffold "$tpl_dir"
+        rm -rf "$tpl_dir"
+        echo ""
         echo "  [DRY-RUN] Migration complete — no files were written"
         echo ""
         return
@@ -200,6 +270,10 @@ run_migration() {
     echo "✅ $LEGACY_CLAUDE_MD removed"
 
     write_claude_stub
+
+    echo ""
+    apply_session_scaffold "$tpl_dir"
+    rm -rf "$tpl_dir"
 
     echo ""
     echo "✅ Migrated: claude.md -> AGENTS.md; CLAUDE.md created/updated (see above)"
@@ -257,6 +331,9 @@ run_normal_refresh() {
     tmp_file=$(mktemp)
     echo "Fetching updated standards from dev-standards..."
     fetch_fresh_content "$modules_string" "$tmp_file"
+    local tpl_dir
+    tpl_dir=$(mktemp -d)
+    fetch_session_templates "$tpl_dir"
 
     printf "\n---\n\n" >> "$tmp_file"
     echo "$project_specific" >> "$tmp_file"
@@ -282,6 +359,9 @@ run_normal_refresh() {
         echo "✅ $AGENTS_MD refreshed."
         echo "   Auto-generated sections updated; ## Project-Specific preserved."
     fi
+    echo ""
+    apply_session_scaffold "$tpl_dir"
+    rm -rf "$tpl_dir"
     echo ""
 }
 

@@ -349,7 +349,7 @@ echo "✅ Directory structure created"
 # --- dev-standards fetch source (shared by Phase 3.5 templates and AGENTS.md) ---
 DEV_STANDARDS_RAW_MAIN="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude"
 DEV_STANDARDS_RAW_DEV="https://raw.githubusercontent.com/pdrangeid/dev-standards/develop/claude"
-DEV_STANDARDS_RAW="$DEV_STANDARDS_RAW_DEV"  # default to develop branch for latest updates
+DEV_STANDARDS_RAW="${DEV_STANDARDS_RAW:-$DEV_STANDARDS_RAW_DEV}"  # default to develop branch for latest updates
 
 # --- Phase 3.5: Session Directory --------------------------------------------
 echo "--- Phase 3.5: Session Directory (.session/) ---"
@@ -358,7 +358,7 @@ SESSION_DIR="$PROJECT_DIR/.session"
 SPECS_DIR="$SESSION_DIR/specs"
 ADR_DIR="$SPECS_DIR/adr"
 ARCHIVE_DIR="$SESSION_DIR/archive"
-SESSION_TEMPLATE_URL="https://raw.githubusercontent.com/pdrangeid/dev-standards/main/claude/session-template.md"
+SESSION_TEMPLATE_URL="${DEV_STANDARDS_RAW}/session-template.md"  # same branch as AGENTS.md and ADR templates
  
 run mkdir -p "$SESSION_DIR"
 run mkdir -p "$ADR_DIR"
