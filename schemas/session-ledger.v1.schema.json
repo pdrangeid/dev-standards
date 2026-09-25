@@ -1,0 +1,589 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pdrangeid/dev-standards/blob/develop/schemas/session-ledger.v1.schema.json",
+  "$defs": {
+    "Artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "pattern": "^[A-Z][A-Za-z0-9]*$",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ref": {
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "repo": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repo"
+        }
+      },
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "title": "Artifact",
+      "type": "object"
+    },
+    "Blocker": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^B\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/BlockerKind"
+        },
+        "owner": {
+          "minLength": 1,
+          "title": "Owner",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/BlockerStatus",
+          "default": "open"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "kind",
+        "owner"
+      ],
+      "title": "Blocker",
+      "type": "object"
+    },
+    "BlockerKind": {
+      "enum": [
+        "human_action",
+        "environment",
+        "dependency",
+        "decision"
+      ],
+      "title": "BlockerKind",
+      "type": "string"
+    },
+    "BlockerStatus": {
+      "enum": [
+        "open",
+        "cleared"
+      ],
+      "title": "BlockerStatus",
+      "type": "string"
+    },
+    "Check": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^C\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Command"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected"
+        },
+        "observed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed"
+        },
+        "result": {
+          "$ref": "#/$defs/CheckResult",
+          "default": "pending"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "title": "Check",
+      "type": "object"
+    },
+    "CheckResult": {
+      "enum": [
+        "pending",
+        "pass",
+        "fail",
+        "not_run"
+      ],
+      "title": "CheckResult",
+      "type": "string"
+    },
+    "Debt": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^T\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/DebtScope"
+        },
+        "target_repo": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Repo"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "scope"
+      ],
+      "title": "Debt",
+      "type": "object"
+    },
+    "DebtScope": {
+      "enum": [
+        "this_repo",
+        "other_repo",
+        "platform"
+      ],
+      "title": "DebtScope",
+      "type": "string"
+    },
+    "Decision": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^D\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/DecisionStatus"
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        },
+        "carried_from": {
+          "anyOf": [
+            {
+              "pattern": "^(?:[a-z0-9][a-z0-9._-]*/\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*)?#[DQFCTB]\\d+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Carried From"
+        },
+        "signoff": {
+          "default": false,
+          "title": "Signoff",
+          "type": "boolean"
+        },
+        "answers": {
+          "default": [],
+          "items": {
+            "pattern": "^(?:[a-z0-9][a-z0-9._-]*/\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*)?#[DQFCTB]\\d+$",
+            "type": "string"
+          },
+          "title": "Answers",
+          "type": "array"
+        },
+        "supersedes": {
+          "default": [],
+          "items": {
+            "pattern": "^(?:[a-z0-9][a-z0-9._-]*/\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*)?#[DQFCTB]\\d+$",
+            "type": "string"
+          },
+          "title": "Supersedes",
+          "type": "array"
+        },
+        "adr": {
+          "anyOf": [
+            {
+              "pattern": "^ADR-\\d{4}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adr"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "status",
+        "origin"
+      ],
+      "title": "Decision",
+      "type": "object"
+    },
+    "DecisionStatus": {
+      "enum": [
+        "proposed",
+        "accepted",
+        "rejected"
+      ],
+      "title": "DecisionStatus",
+      "type": "string"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^F\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/FindingKind"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "resolved": {
+          "default": false,
+          "title": "Resolved",
+          "type": "boolean"
+        },
+        "refs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "text"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "FindingKind": {
+      "enum": [
+        "bug",
+        "premise_invalid",
+        "confirmation",
+        "drift"
+      ],
+      "title": "FindingKind",
+      "type": "string"
+    },
+    "Origin": {
+      "enum": [
+        "user",
+        "agent",
+        "carried"
+      ],
+      "title": "Origin",
+      "type": "string"
+    },
+    "Outcome": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/OutcomeStatus"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "Outcome",
+      "type": "object"
+    },
+    "OutcomeStatus": {
+      "enum": [
+        "met",
+        "partial",
+        "not_met",
+        "abandoned"
+      ],
+      "title": "OutcomeStatus",
+      "type": "string"
+    },
+    "Question": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^Q\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/QuestionStatus"
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolution"
+        },
+        "required_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required Before"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "status"
+      ],
+      "title": "Question",
+      "type": "object"
+    },
+    "QuestionStatus": {
+      "enum": [
+        "open",
+        "resolved",
+        "deferred"
+      ],
+      "title": "QuestionStatus",
+      "type": "string"
+    },
+    "Run": {
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "surface": {
+          "pattern": "^(?:claude-code-cloud|web|human|claude-code-(?:ide|cli)@[a-z0-9.-]+)$",
+          "title": "Surface",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "commits": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9._-]*@[0-9a-f]{7,40}$",
+            "type": "string"
+          },
+          "title": "Commits",
+          "type": "array"
+        }
+      },
+      "required": [
+        "date",
+        "surface",
+        "summary"
+      ],
+      "title": "Run",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "'yaml session-ledger' block under '## Ledger' (schema_version 1). Generated from dev_standards.session_schema.models; do not edit by hand. Captures shape and enums only: cross-field rules (model validators) are not expressible in JSON Schema, so validating against this schema is necessary but not sufficient. Run session-lint for the full rule set.",
+  "properties": {
+    "runs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Run"
+      },
+      "title": "Runs",
+      "type": "array"
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Outcome"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "decisions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Decision"
+      },
+      "title": "Decisions",
+      "type": "array"
+    },
+    "questions": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Question"
+      },
+      "title": "Questions",
+      "type": "array"
+    },
+    "findings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "checks": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Check"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "debt": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Debt"
+      },
+      "title": "Debt",
+      "type": "array"
+    },
+    "blockers": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Blocker"
+      },
+      "title": "Blockers",
+      "type": "array"
+    },
+    "produced": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Artifact"
+      },
+      "title": "Produced",
+      "type": "array"
+    }
+  },
+  "title": "SessionLedger",
+  "type": "object"
+}

@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pdrangeid/dev-standards/blob/develop/schemas/session-header.v1.schema.json",
+  "$defs": {
+    "Links": {
+      "additionalProperties": false,
+      "properties": {
+        "depends_on": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9._-]*/\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "supersedes": {
+          "default": [],
+          "items": {
+            "pattern": "^[a-z0-9][a-z0-9._-]*/\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "type": "string"
+          },
+          "title": "Supersedes",
+          "type": "array"
+        },
+        "split_from": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z0-9][a-z0-9._-]*/\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Split From"
+        },
+        "references": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "References",
+          "type": "array"
+        }
+      },
+      "title": "Links",
+      "type": "object"
+    },
+    "RepoRef": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[a-z0-9][a-z0-9._-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/$defs/RepoRole"
+        }
+      },
+      "required": [
+        "name",
+        "role"
+      ],
+      "title": "RepoRef",
+      "type": "object"
+    },
+    "RepoRole": {
+      "enum": [
+        "primary",
+        "secondary",
+        "reference"
+      ],
+      "title": "RepoRole",
+      "type": "string"
+    },
+    "SessionStatus": {
+      "enum": [
+        "draft",
+        "active",
+        "blocked",
+        "complete",
+        "superseded",
+        "abandoned"
+      ],
+      "title": "SessionStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "YAML frontmatter of a session file (schema_version 1). Generated from dev_standards.session_schema.models; do not edit by hand. Captures shape and enums only: cross-field rules (model validators) are not expressible in JSON Schema, so validating against this schema is necessary but not sufficient. Run session-lint for the full rule set.",
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "id": {
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "title": "Id",
+      "type": "string"
+    },
+    "title": {
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/SessionStatus"
+    },
+    "status_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Status Reason"
+    },
+    "created": {
+      "format": "date",
+      "title": "Created",
+      "type": "string"
+    },
+    "repos": {
+      "items": {
+        "$ref": "#/$defs/RepoRef"
+      },
+      "minItems": 1,
+      "title": "Repos",
+      "type": "array"
+    },
+    "branch": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Branch"
+    },
+    "links": {
+      "$ref": "#/$defs/Links"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "status",
+    "created",
+    "repos"
+  ],
+  "title": "SessionHeader",
+  "type": "object"
+}
