@@ -94,9 +94,12 @@ measured fragility; see
 `lifeos-jobwatch/.session/2026-09-02-jobwatch-pre-freeze-golden-census-logging-contract.md`.
 
 1. **Root logger name equals the distribution package name, with underscores.**
-   `logging.getLogger(__name__)` from a module inside `lifeos_mcp/` satisfies
+   `logging.getLogger(__name__)` from a module inside `lifeos_synaptex/` satisfies
    this. The root segment is a durable identifier — renaming it is a breaking
    change requiring a graph migration, the same as renaming a node label.
+   The procedure (re-key job telemetry in place with jobwatch's
+   `scripts/migrate_package_rename.py` before the next nightly emit) is in
+   `lifeos-jobwatch/.session/specs/adr/0001-rekey-telemetry-on-package-rename.md`.
 2. **Every scheduled job runs under the `run_uv_script.sh` wrapper**, so its log
    carries `>>> Executing <script> at <when>` and
    `<<< Finished <script> rc=<n> duration_sec=<n> at <when>`. The footer is
@@ -111,7 +114,7 @@ measured fragility; see
    tool.
 5. **Any rich summary table must be accompanied by a plain log line carrying the
    same values**, e.g.
-   `[INFO] lifeos_mcp.tools.ingest: SUMMARY nodes=412 rels=1180 status=partial`.
+   `[INFO] lifeos_synaptex.tools.ingest: SUMMARY nodes=412 rels=1180 status=partial`.
    Box-drawing table parsing is the most fragile path in a log reader and is
    often the only structured-data path out of these tools — a redundant text
    line demotes it from load-bearing to convenience. This is the single
