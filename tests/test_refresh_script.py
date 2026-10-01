@@ -161,3 +161,31 @@ def test_refresh_leaves_symlink_alone_while_claude_md_exists(project):
         assert result.returncode == 0, result.stdout
         assert "epoint" not in result.stdout
     assert os.readlink(project / "GEMINI.md") == "claude.md"
+
+
+LEGACY_HEADER = (
+    HEADER + "<!-- Do not edit above ## Project-Specific — run refresh-claude.sh -->\n"
+)
+
+
+def test_migration_refuses_to_overwrite_diverged_agents_md(tmp_path):
+    (tmp_path / "claude.md").write_text(LEGACY_HEADER + "old\n\n" + PROJECT_SPECIFIC)
+    edited = PROJECT_SPECIFIC + "Edited only in AGENTS.md.\n"
+    (tmp_path / "AGENTS.md").write_text(HEADER + "newer\n\n" + edited)
+    before = snapshot(tmp_path)
+
+    result = run(tmp_path)
+    assert result.returncode == 1
+    assert "sections differ" in result.stdout
+    assert snapshot(tmp_path) == before
+
+
+def test_migration_replaces_agents_md_with_matching_project_specific(tmp_path):
+    (tmp_path / "claude.md").write_text(LEGACY_HEADER + "old\n\n" + PROJECT_SPECIFIC)
+    (tmp_path / "AGENTS.md").write_text(HEADER + "stale\n\n" + PROJECT_SPECIFIC)
+
+    result = run(tmp_path)
+    assert result.returncode == 0, result.stdout
+    assert "safe to replace" in result.stdout
+    assert not (tmp_path / "claude.md").exists()
+    assert (tmp_path / "AGENTS.md").read_text().endswith(PROJECT_SPECIFIC)

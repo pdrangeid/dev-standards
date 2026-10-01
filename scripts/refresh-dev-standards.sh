@@ -25,6 +25,8 @@
 #   stub (`@AGENTS.md` import) for Claude Code. The '## Project-Specific'
 #   section carries over byte-for-byte. Migration is idempotent — once a
 #   project is migrated, later runs take the normal refresh path.
+#   If an AGENTS.md already exists with a different '## Project-Specific'
+#   section, migration aborts rather than overwrite it.
 #
 # Run from your project root, or pass --agents-md <path> explicitly.
 # Set DEV_STANDARDS_RAW to fetch from elsewhere (e.g. file:///path/to/claude).
@@ -242,6 +244,24 @@ run_migration() {
     fi
     echo "📍 Project-Specific section starts at line $boundary_line"
 
+    # Migration rebuilds AGENTS.md from claude.md. If an AGENTS.md already
+    # exists (e.g. an earlier, uncommitted migration), overwriting it is only
+    # safe when its Project-Specific section matches claude.md's; otherwise
+    # edits made in AGENTS.md would be silently lost.
+    if [ -f "$AGENTS_MD" ]; then
+        local agents_boundary
+        agents_boundary=$(grep -n "^## Project-Specific" "$AGENTS_MD" | head -1 | cut -d: -f1)
+        if [ -z "$agents_boundary" ] || ! cmp -s \
+            <(tail -n +"$boundary_line" "$LEGACY_CLAUDE_MD") \
+            <(tail -n +"$agents_boundary" "$AGENTS_MD"); then
+            echo "❌ Both $LEGACY_CLAUDE_MD and $AGENTS_MD exist, and their"
+            echo "   '## Project-Specific' sections differ. Migrating would overwrite"
+            echo "   $AGENTS_MD with claude.md's content — aborting."
+            echo "   Reconcile the two by hand, then delete $LEGACY_CLAUDE_MD and re-run."
+            exit 1
+        fi
+        echo "  ✔  Existing $AGENTS_MD has the same Project-Specific section — safe to replace"
+    fi
 
     FETCH_FAILED=false
     local tmp_file
