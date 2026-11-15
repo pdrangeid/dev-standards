@@ -71,9 +71,10 @@ When prompted (or via `--modules`), select which standards modules apply to your
 | `live-exporter` | Strategic Exporter — driver management, amplifier payload, GraphSchema, Lesson logging |
 | `ast-analyzer` | Codebase Graph Analyzer — two-pass parse, entity IDs, `has_label()`, `safe_primitive()` |
 | `llm` | Two-pass LLM pipeline design, chunking discipline, config conventions for LLM calls |
+| `infra-ops` | Live hosts and networks: ask-before-change, sudo limits, lockout prevention, backups, DNS / Pi-hole, verification (use with the `ops` base) |
 
 Each selected module is fetched from this repo and composed into the project's `AGENTS.md`
-alongside the universal `base.md` standards.
+alongside a base (see [Bases](#bases-python-and-ops)).
 
 ### What Gets Created
 
@@ -121,8 +122,30 @@ refresh-standards --agents-md /path/to/AGENTS.md
 ```
 
 `refresh-dev-standards.sh` reads the `<!-- AUTO-GENERATED: base + modules[...] -->` header
-written by `setup-project.sh`, re-fetches those exact modules, and replaces
+written by `setup-project.sh`, re-fetches that base and those exact modules, and replaces
 everything above `## Project-Specific` — leaving your project-specific notes untouched.
+
+### Bases: Python and ops
+
+Every `AGENTS.md` starts with one base. The header's first token picks it:
+
+| Header | Base file | For |
+|---|---|---|
+| `<!-- AUTO-GENERATED: base + modules[...] -->` | `claude/base.md` | Python projects (the default; every existing header) |
+| `<!-- AUTO-GENERATED: base:ops + modules[...] -->` | `claude/base-ops.md` | Ops repos: shell scripts, host / network config, runbooks |
+
+Both bases share the same docs-currency, git-workflow and session-management sections. Only
+the language, tooling, layout and config sections differ. To move an existing repo to
+the ops base, edit its header's first line (for example to
+`<!-- AUTO-GENERATED: base:ops + modules[infra-ops] -->`) and run the refresh. A header
+naming an unknown base fails the fetch and writes nothing. `setup-project.sh` only scaffolds
+Python projects, so a new ops repo starts from a hand-written `AGENTS.md` with that header
+and a `## Project-Specific` heading.
+
+The base files are **built**: edit `claude/base-src/` (`python.md`, `ops.md`, and the shared
+`common.md`), then run `uv run dev-standards bases build` and commit the sources and the
+built files together. `tests/test_bases.py` fails if a built file is stale, and
+`dev-standards bases check` does the same check outside pytest.
 
 It also brings the project's `.session/` scaffold up to date (next to `AGENTS.md`):
 
@@ -181,7 +204,10 @@ The commands need a dev-standards checkout installed editable
 
 1. Copy [project-templates/workspace.yaml.template](project-templates/workspace.yaml.template)
    somewhere and edit it: `repos_root` (absolute, no `~`), the `repos` list, the `graph`
-   section, and the MCP server. `graph.database` is the Neo4j database the MCP server opens
+   section, the MCP server, and `standards` (`base: python` by default, or `base: ops` for a
+   shell / config / network workspace, plus `modules`). `graph` is optional: leave it out
+   (and list no Neo4j server) and the workspace gets no Graph access rules.
+   `graph.database` is the Neo4j database the MCP server opens
    (default `neo4j`, the only one on Community Edition); a lifeos-neo4j profile name such as
    `lifeos-kg` goes in `graph.profile`, which only appears in the rules text.
 2. `dev-standards workspace new <path> --from workspace.yaml` validates the yaml (every repo
@@ -347,7 +373,9 @@ dev-standards/
 │   └── refresh-dev-standards.sh  # Update auto-generated AGENTS.md sections (+ claude.md migration)
 ├── claude/
 │   ├── HEADER.md            # Auto-gen comment block template
-│   ├── base.md              # Universal Python standards (always included)
+│   ├── base.md              # Built: Python base (default) — edit base-src/, not this
+│   ├── base-ops.md          # Built: ops base (shell, config, runbooks) — edit base-src/
+│   ├── base-src/            # Base sources: python.md, ops.md, common.md (shared sections)
 │   ├── session-template.md  # Copied to .session/_template.md in new projects
 │   ├── adr-template.md      # Copied to .session/specs/adr/_template.md in new projects
 │   ├── adr-index-template.md # Copied to .session/specs/adr/index.md in new projects
@@ -357,6 +385,7 @@ dev-standards/
 │       ├── live-exporter.md
 │       ├── ast-analyzer.md
 │       ├── llm.md
+│       ├── infra-ops.md     # Live hosts / networks / Pi-hole; pairs with the ops base
 │       └── workspace.md     # Workspace rules; rendered by `dev-standards workspace`, not in the setup menu
 └── project-templates/
     ├── pyproject.toml.template

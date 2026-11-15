@@ -8,8 +8,10 @@ the `.session/` file format (see ADR-0001).
 
 ## Overview
 
-Standards live as markdown fragments in `claude/` (`base.md` + `modules/*.md`). Two consumers
-compose them:
+Standards live as markdown fragments in `claude/`: one base (`base.md` for Python, or
+`base-<name>.md`, currently `base-ops.md`) plus `modules/*.md`. The bases are built from
+`claude/base-src/` (`<name>.md` + the shared `common.md`) by `dev-standards bases build` and
+committed, so the scripts can fetch one file per base. Two consumers compose them:
 
 - **Shell scripts** (`setup-project.sh`, `refresh-dev-standards.sh`) `curl` the fragments from
   GitHub and write a project's `AGENTS.md` (auto-generated block above `## Project-Specific`).
@@ -24,7 +26,7 @@ The two share content, not transport — core improvements reach workspaces on t
 ```
 workspace.yaml ──load/validate──▶ Workspace (pydantic)
                                        │
-claude/base.md ──────────┐             ▼
+claude/base[-<name>].md ─┐             ▼
 claude/modules/<m>.md ───┼─▶ compose ─▶ plan_render(ws, root) ──▶ {relpath: content}
 claude/modules/workspace.md ┘             ▲                          │
 existing AGENTS.md, settings.local.json ──┘ (read, to preserve)      ├─▶ apply_plan (render, new)
@@ -47,11 +49,12 @@ models.py ──export──▶ schemas/*.v1.schema.json ──▶ external cons
 | Component | Responsibility | Key Logic |
 |:---|:---|:---|
 | `scripts/setup-project.sh` | Scaffold a new project | Fetch base + modules, write `AGENTS.md`, create `.session/` |
-| `scripts/refresh-dev-standards.sh` | Update a project's `AGENTS.md` and `.session/` scaffold | Split on `## Project-Specific`; legacy `claude.md` migration; templates fetched before any write, replaced if different; `index.md` / `archive/` created only if missing |
-| `claude/` | Fragment library | `base.md`, `modules/*.md`, session and ADR templates |
-| `dev_standards/main.py` | CLI entry point | Typer app; registers the `workspace` and `registry` sub-apps (`session-lint` / `session-schema` are separate console scripts) |
-| `workspace/models.py` | Validate `workspace.yaml` | Pydantic; absolute `repos_root`, `graph.database` (default `neo4j`) vs. informational `graph.profile`, `allow_writes` needs `read_only: false`, repo dirs exist, pinned MCP version; `KNOWN_SERVERS` env/tool contract |
-| `workspace/fragments.py` | Compose standards | Resolve `claude/` (option → `$DEV_STANDARDS_CLAUDE_DIR` → checkout); base + modules; workspace rules |
+| `scripts/refresh-dev-standards.sh` | Update a project's `AGENTS.md` and `.session/` scaffold | Header's `base` / `base:<name>` picks the base file; split on `## Project-Specific`; legacy `claude.md` migration; templates fetched before any write, replaced if different; `index.md` / `archive/` created only if missing |
+| `claude/` | Fragment library | Built `base.md` / `base-ops.md`, their `base-src/` sources, `modules/*.md`, session and ADR templates |
+| `dev_standards/bases.py` | Build the bases | `base-src/<name>.md` + `common.md` → `base.md` (python) or `base-<name>.md`; `bases build` / `bases check`; `base_filename()` is the one name→file map (mirrored by the refresh script) |
+| `dev_standards/main.py` | CLI entry point | Typer app; registers the `workspace`, `registry` and `bases` sub-apps (`session-lint` / `session-schema` are separate console scripts) |
+| `workspace/models.py` | Validate `workspace.yaml` | Pydantic; absolute `repos_root`, optional `graph` (required when a Neo4j MCP server is listed), `standards.base` (default `python`), `graph.database` (default `neo4j`) vs. informational `graph.profile`, `allow_writes` needs `read_only: false`, repo dirs exist, pinned MCP version; `KNOWN_SERVERS` env/tool contract |
+| `workspace/fragments.py` | Compose standards | Resolve `claude/` (option → `$DEV_STANDARDS_CLAUDE_DIR` → checkout); selected base + modules; workspace rules (Graph access section only when `graph` is set) |
 | `workspace/registry.py` | Repo descriptions | `<repo>_registry.yaml` then aggregate `registry.yaml`, field `purpose` |
 | `workspace/render.py` | Desired-state engine | Pure plan; marker-region merge; `settings.json` / `settings.local.json` merges; `.session/` scaffold (templates owned, ADR index + archive create-only); plan → apply / diff |
 | `workspace/cli.py` | `workspace new/render/check` | `new` validates first, then git init, render, commit |

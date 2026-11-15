@@ -217,7 +217,8 @@ When a user signals they're done for the session (e.g. "ok that's good for now",
 
 1. Were any docs updated to match what was built? If not, offer to do it now.
 2. Are there any deferred decisions or known issues worth noting somewhere?
-3. Have any new dependencies been added that need updating in `pyproject.toml`?
+3. Have any new dependencies been added that need recording in the project's
+   manifest (`pyproject.toml`, a package list, a host's install notes)?
 4. Is there anything that should be committed that hasn't been?
 
 Keep this lightweight — one short prompt, not an interrogation.
@@ -255,9 +256,7 @@ Keep this lightweight — one short prompt, not an interrogation.
 
 ## What NOT to Do (Base Rules)
 
-- **Don't** use `print()` — use logger or rich console
-- **Don't** hardcode paths, credentials, or environment values in source code
-- **Don't** re-read config on every function call — load once at startup
+- **Don't** hardcode paths, credentials, or environment values in source code or scripts
 - **Don't** produce diff-style patches for changes — always produce complete files
 - **Don't** let `README.md` or `ARCHITECTURE.md` drift from what the code actually does
 

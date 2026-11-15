@@ -7,7 +7,9 @@
 #
 # What it does:
 #   1. Reads the <!-- AUTO-GENERATED: base + modules[...] --> header from AGENTS.md
-#   2. Re-fetches base.md + all listed modules from dev-standards (GitHub raw)
+#      (`base` = the Python base, claude/base.md; `base:<name>` = claude/base-<name>.md,
+#      e.g. `base:ops + modules[infra-ops]` for a shell/config/ops repo)
+#   2. Re-fetches that base + all listed modules from dev-standards (GitHub raw)
 #   3. Replaces everything above "## Project-Specific" with fresh content
 #   4. Leaves everything at and below "## Project-Specific" untouched
 #   5. Syncs the .session/ scaffold next to AGENTS.md:
@@ -67,23 +69,54 @@ ARCHIVE_DIR="${SESSION_DIR}/archive"
 
 # --- Shared helpers ------------------------------------------------------------
 
-# Fetch base.md + selected modules into $2, prefixed with a freshly-written
-# header. Sets FETCH_FAILED=true on any failed fetch. Reads $SELECTED_MODULES.
+# Print the base named in AUTO-GENERATED header line $1: "python" for a plain
+# `base`, otherwise the <name> of `base:<name>`. Prints nothing (and returns 1)
+# for a malformed base token, so callers can refuse rather than guess.
+parse_base_name() {
+    local header="$1" token
+    token=$(printf '%s\n' "$header" | sed -n 's/^<!-- AUTO-GENERATED: \([^ ]*\) .*/\1/p')
+    case "$token" in
+        base | base@*) echo python ;;  # base@<sha>: the form shown in claude/HEADER.md
+        base:*)
+            local name="${token#base:}"
+            [[ "$name" =~ ^[a-z0-9][a-z0-9-]*$ ]] || return 1
+            echo "$name"
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+# Built base file for base name $1 (mirrors dev_standards/bases.py base_filename).
+base_file_for() {
+    if [ "$1" = python ]; then echo base.md; else echo "base-$1.md"; fi
+}
+
+# Header token for base name $1: plain `base` for python keeps old headers stable.
+base_token_for() {
+    if [ "$1" = python ]; then echo base; else echo "base:$1"; fi
+}
+
+# Fetch the base named $3 (default python) + selected modules into $2, prefixed
+# with a freshly-written header. Sets FETCH_FAILED=true on any failed fetch.
+# Reads $SELECTED_MODULES.
 fetch_fresh_content() {
     local modules_string="$1"
     local out_file="$2"
+    local base_name="${3:-python}"
+    local base_file
+    base_file=$(base_file_for "$base_name")
 
     cat > "$out_file" << AGENTSHEADER
-<!-- AUTO-GENERATED: base + modules[${modules_string}] -->
+<!-- AUTO-GENERATED: $(base_token_for "$base_name") + modules[${modules_string}] -->
 <!-- Do not edit above ## Project-Specific — run refresh-dev-standards.sh to update -->
 <!-- dev-standards: https://github.com/pdrangeid/dev-standards -->
 
 AGENTSHEADER
 
-    if curl -fsSL "${DEV_STANDARDS_RAW}/base.md" >> "$out_file" 2>/dev/null; then
-        echo "  ✅ Fetched base.md"
+    if curl -fsSL "${DEV_STANDARDS_RAW}/${base_file}" >> "$out_file" 2>/dev/null; then
+        echo "  ✅ Fetched ${base_file}"
     else
-        echo "  ❌ Failed to fetch base.md from dev-standards from ${DEV_STANDARDS_RAW}"
+        echo "  ❌ Failed to fetch ${base_file} from dev-standards from ${DEV_STANDARDS_RAW}"
         FETCH_FAILED=true
     fi
 
@@ -229,6 +262,12 @@ run_migration() {
 
     local modules_string
     modules_string=$(echo "$legacy_header_line" | sed -n 's/.*modules\[\([^]]*\)\].*/\1/p')
+    local base_name
+    if ! base_name=$(parse_base_name "$legacy_header_line"); then
+        echo "❌ Unrecognized base in $LEGACY_CLAUDE_MD header: $legacy_header_line"
+        echo "   Expected 'base' or 'base:<name>'. Aborting."
+        exit 1
+    fi
     SELECTED_MODULES=()
     if [ -n "$modules_string" ]; then
         IFS=',' read -ra SELECTED_MODULES <<< "$modules_string"
@@ -267,7 +306,7 @@ run_migration() {
     local tmp_file
     tmp_file=$(mktemp)
     echo "Fetching updated standards from dev-standards..."
-    fetch_fresh_content "$modules_string" "$tmp_file"
+    fetch_fresh_content "$modules_string" "$tmp_file" "$base_name"
     local tpl_dir
     tpl_dir=$(mktemp -d)
     fetch_session_templates "$tpl_dir"
@@ -340,11 +379,18 @@ run_normal_refresh() {
 
     local modules_string
     modules_string=$(echo "$header_line" | sed -n 's/.*modules\[\([^]]*\)\].*/\1/p')
+    local base_name
+    if ! base_name=$(parse_base_name "$header_line"); then
+        echo "❌ Unrecognized base in $AGENTS_MD header: $header_line"
+        echo "   Expected 'base' or 'base:<name>'. Aborting."
+        exit 1
+    fi
 
     echo "============================================="
     echo " refresh-dev-standards.sh"
     echo "============================================="
     echo " File    : $AGENTS_MD"
+    echo " Base    : ${base_name}"
     echo " Modules : ${modules_string:-none}"
     [ "$DRY_RUN" = true ] && echo " Mode    : DRY RUN"
     echo "============================================="
@@ -370,7 +416,7 @@ run_normal_refresh() {
     local tmp_file
     tmp_file=$(mktemp)
     echo "Fetching updated standards from dev-standards..."
-    fetch_fresh_content "$modules_string" "$tmp_file"
+    fetch_fresh_content "$modules_string" "$tmp_file" "$base_name"
     local tpl_dir
     tpl_dir=$(mktemp -d)
     fetch_session_templates "$tpl_dir"

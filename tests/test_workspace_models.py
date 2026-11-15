@@ -79,3 +79,27 @@ def test_allow_writes_requires_read_write(make_yaml):
         load_workspace(make_yaml(graph={"allow_writes": True}))
     ws = load_workspace(make_yaml(graph={"read_only": False, "allow_writes": True}))
     assert ws.graph.allow_writes
+
+
+def test_graph_is_optional_without_graph_servers(make_yaml):
+    ws = load_workspace(
+        make_yaml(graph=None, mcp={"servers": []}, standards={"base": "ops"})
+    )
+    assert ws.graph is None
+    assert ws.allow_writes is False
+    assert ws.standards.base == "ops"
+
+
+def test_graph_server_without_graph_fails(make_yaml):
+    with pytest.raises(WorkspaceError, match="add a graph: section"):
+        load_workspace(make_yaml(graph=None))
+
+
+def test_standards_base_defaults_to_python(make_yaml):
+    assert load_workspace(make_yaml()).standards.base == "python"
+
+
+@pytest.mark.parametrize("base", ["Ops", "../ops", ""])
+def test_bad_standards_base_fails(make_yaml, base):
+    with pytest.raises(WorkspaceError, match="invalid standards.base"):
+        load_workspace(make_yaml(standards={"base": base}))

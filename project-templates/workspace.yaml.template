@@ -28,6 +28,8 @@ repos:
   - name: codebase-graph-analyzer
   - name: dev-standards
 
+# Optional. Leave graph: out (and list no Neo4j MCP server) for a workspace with no graph,
+# such as an ops workspace; its AGENTS.md then has no Graph access section.
 graph:
   database: neo4j            # the Neo4j database the MCP server connects to (CE has only `neo4j`)
   profile: lifeos-kg         # optional: lifeos-neo4j profile the pipeline tools use (rules text only)
@@ -46,4 +48,9 @@ mcp:
       # URI, username and password go in the env file (see .env.example), never here.
 
 standards:
-  modules: [neo4j]           # base + workspace rules are always included
+  base: python               # python (default) | ops — shell scripts, host/network config
+  modules: [neo4j]           # a base + workspace rules are always included
+# An ops workspace (no graph, no MCP servers) would instead use:
+# standards:
+#   base: ops
+#   modules: [infra-ops]
