@@ -1,14 +1,12 @@
 ## Precedence
 
-A repo's own `AGENTS.md` governs code inside that repo. This file governs cross-repo coordination, graph access, and session protocol.
+A repo's own `AGENTS.md` governs code inside that repo. This file governs cross-repo coordination, shared resources such as the graph, and session protocol.
 
 ## Working in a repo
 
 Before reading or changing code in any repo listed below, read `<repo>/AGENTS.md` and follow it.
 
-## Graph access
-
-{{ graph_access }}
+{{ graph_access_section }}
 
 ## Session protocol
 

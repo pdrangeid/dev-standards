@@ -9,6 +9,8 @@ import logging
 import os
 from pathlib import Path
 
+from dev_standards.bases import DEFAULT_BASE, base_filename
+
 from .models import Workspace, WorkspaceError
 
 logger = logging.getLogger(__name__)
@@ -52,9 +54,11 @@ def read_fragment(fragments_dir: Path, name: str) -> str:
         raise WorkspaceError(f"Cannot read template {path}: {e}") from e
 
 
-def compose_standards(fragments_dir: Path, modules: list[str]) -> str:
-    """Return base.md followed by each selected module, blank-line separated."""
-    parts = [_read(fragments_dir / "base.md", "base")]
+def compose_standards(
+    fragments_dir: Path, modules: list[str], base: str = DEFAULT_BASE
+) -> str:
+    """Return the selected base followed by each module, blank-line separated."""
+    parts = [_read(fragments_dir / base_filename(base), f"base '{base}'")]
     for module in modules:
         parts.append(
             _read(fragments_dir / "modules" / f"{module}.md", f"module '{module}'")
@@ -65,12 +69,27 @@ def compose_standards(fragments_dir: Path, modules: list[str]) -> str:
 def workspace_rules(fragments_dir: Path, ws: Workspace) -> str:
     """Return the workspace fragment with workspace-specific values substituted."""
     text = _read(fragments_dir / "modules" / "workspace.md", "workspace")
-    return text.replace("{{ graph_access }}", graph_access(ws))
+    section = graph_access_section(ws)
+    if section:
+        return text.replace("{{ graph_access_section }}", section)
+    # No graph: drop the placeholder and the blank line that follows it.
+    return text.replace("{{ graph_access_section }}\n\n", "").replace(
+        "{{ graph_access_section }}", ""
+    )
+
+
+def graph_access_section(ws: Workspace) -> str:
+    """``## Graph access`` heading plus rules, or "" when no graph is configured."""
+    if ws.graph is None:
+        return ""
+    return f"## Graph access\n\n{graph_access(ws)}"
 
 
 def graph_access(ws: Workspace) -> str:
     """The workspace's graph rules, derived from the ``graph`` section."""
     g = ws.graph
+    if g is None:
+        return ""
     lines = [f"Database: `{g.database}`."]
     if g.profile:
         lines.append(

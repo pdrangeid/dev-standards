@@ -15,6 +15,8 @@ from pydantic import (
     model_validator,
 )
 
+from dev_standards.bases import BASE_NAME_RE, DEFAULT_BASE
+
 logger = logging.getLogger(__name__)
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -160,7 +162,16 @@ class Standards(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Which base: `python` (claude/base.md) or e.g. `ops` (claude/base-ops.md).
+    base: str = DEFAULT_BASE
     modules: list[str] = Field(default_factory=list)  # base + workspace are implicit
+
+    @field_validator("base")
+    @classmethod
+    def _valid_base(cls, v: str) -> str:
+        if not BASE_NAME_RE.match(v):
+            raise ValueError(f"invalid standards.base {v!r}")
+        return v
 
     @field_validator("modules")
     @classmethod
@@ -183,7 +194,8 @@ class Workspace(BaseModel):
     repos_root: Path
     registry_dir: Path | None = None  # where <repo>_registry.yaml files live
     repos: list[Repo] = Field(min_length=1)
-    graph: Graph
+    # Optional: a workspace with no graph gets no Graph access rules.
+    graph: Graph | None = None
     mcp: Mcp = Field(default_factory=Mcp)
     standards: Standards = Field(default_factory=Standards)
 
@@ -212,6 +224,22 @@ class Workspace(BaseModel):
         if dupes:
             raise ValueError(f"duplicate repos: {dupes}")
         return v
+
+    @model_validator(mode="after")
+    def _graph_servers_need_graph(self) -> "Workspace":
+        if self.graph is None:
+            needy = [s.name for s in self.mcp.servers if s.profile is not None]
+            if needy:
+                raise ValueError(
+                    f"MCP server(s) {needy} connect to a graph database; "
+                    "add a graph: section"
+                )
+        return self
+
+    @property
+    def allow_writes(self) -> bool:
+        """True only when a graph is configured with ``allow_writes``."""
+        return self.graph is not None and self.graph.allow_writes
 
     def repo_path(self, repo: Repo) -> Path:
         """Absolute path of ``repo`` under ``repos_root``."""

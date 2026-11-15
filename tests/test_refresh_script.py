@@ -189,3 +189,51 @@ def test_migration_replaces_agents_md_with_matching_project_specific(tmp_path):
     assert "safe to replace" in result.stdout
     assert not (tmp_path / "claude.md").exists()
     assert (tmp_path / "AGENTS.md").read_text().endswith(PROJECT_SPECIFIC)
+
+
+def test_ops_base_header_fetches_ops_base_and_keeps_header(tmp_path):
+    header = "<!-- AUTO-GENERATED: base:ops + modules[infra-ops] -->\n"
+    (tmp_path / "AGENTS.md").write_text(header + "old\n\n" + PROJECT_SPECIFIC)
+    result = run(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Fetched base-ops.md" in result.stdout
+    agents = (tmp_path / "AGENTS.md").read_text()
+    assert agents.startswith(header)
+    assert (CLAUDE / "base-ops.md").read_text() in agents
+    assert (CLAUDE / "modules/infra-ops.md").read_text() in agents
+    assert "Base Python Conventions" not in agents
+    assert agents.endswith(PROJECT_SPECIFIC)
+
+
+def test_plain_and_sha_base_headers_stay_python(tmp_path):
+    for token in ("base", "base@a3f2c1"):
+        (tmp_path / "AGENTS.md").write_text(
+            f"<!-- AUTO-GENERATED: {token} + modules[] -->\nold\n\n" + PROJECT_SPECIFIC
+        )
+        assert run(tmp_path).returncode == 0
+        agents = (tmp_path / "AGENTS.md").read_text()
+        assert agents.startswith(HEADER)
+        assert (CLAUDE / "base.md").read_text() in agents
+
+
+@pytest.mark.parametrize("token", ["base:Ops", "base:../x", "standards"])
+def test_bad_base_token_aborts_without_writing(tmp_path, token):
+    (tmp_path / "AGENTS.md").write_text(
+        f"<!-- AUTO-GENERATED: {token} + modules[] -->\nold\n\n" + PROJECT_SPECIFIC
+    )
+    before = snapshot(tmp_path)
+    result = run(tmp_path)
+    assert result.returncode == 1
+    assert "Unrecognized base" in result.stdout
+    assert snapshot(tmp_path) == before
+
+
+def test_unknown_base_fails_fetch_and_writes_nothing(tmp_path):
+    (tmp_path / "AGENTS.md").write_text(
+        "<!-- AUTO-GENERATED: base:nope + modules[] -->\nold\n\n" + PROJECT_SPECIFIC
+    )
+    before = snapshot(tmp_path)
+    result = run(tmp_path)
+    assert result.returncode == 1
+    assert "Failed to fetch base-nope.md" in result.stdout
+    assert snapshot(tmp_path) == before

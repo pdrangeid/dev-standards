@@ -45,8 +45,12 @@ Copy `.env.example` to `.env` and fill in credentials.
 ## AGENTS.md Modules
 
 `setup-project.sh --modules <list>` (or the interactive menu) composes a new
-project's `AGENTS.md` from `claude/base.md` plus any of the modules below,
-fetched from `claude/modules/`:
+project's `AGENTS.md` from `claude/base.md` (the Python base) plus any of the modules
+below, fetched from `claude/modules/`. An ops repo (shell scripts, host and network
+config) uses the ops base instead: start its `AGENTS.md` header with
+`<!-- AUTO-GENERATED: base:ops + modules[infra-ops] -->` and run
+`refresh-dev-standards.sh`. A workspace picks its base with `standards.base` in
+`workspace.yaml`.
 
 | Module key | What it covers |
 |:---|:---|
@@ -55,5 +59,9 @@ fetched from `claude/modules/`:
 | `live-exporter` | Strategic Exporter — driver management, amplifier payload, GraphSchema, Lesson logging |
 | `ast-analyzer` | Codebase Graph Analyzer — two-pass parse, entity IDs, `has_label()`, `safe_primitive()` |
 | `llm` | Two-pass LLM pipeline design, chunking discipline, config conventions for LLM calls |
+| `infra-ops` | Live hosts and networks: ask-before-change, sudo limits, lockout prevention, backups, DNS / Pi-hole, verification |
+
+After editing `claude/base-src/`, rebuild the base files with
+`uv run dev-standards bases build` (`bases check` exits 1 if they are stale).
 
 See `README.md` for full scaffolding and refresh examples.

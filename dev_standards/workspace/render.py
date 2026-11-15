@@ -144,7 +144,7 @@ def render_mcp_json(ws: Workspace, root: Path) -> str:
     servers = {}
     for server in ws.mcp.servers:
         env: dict[str, str] = {}
-        if profile := server.profile:
+        if (profile := server.profile) and ws.graph is not None:
             env[profile.database_var] = ws.graph.database
             if ws.graph.read_only:
                 env[profile.read_only_var] = "true"
@@ -198,7 +198,7 @@ def render_settings_json(ws: Workspace, existing: str | None, path: Path) -> str
     if not isinstance(permissions, dict):
         permissions = {}
     kept = [e for e in permissions.get("deny", []) if e not in ours]
-    permissions["deny"] = kept + ([] if ws.graph.allow_writes else ours)
+    permissions["deny"] = kept + ([] if ws.allow_writes else ours)
     data["permissions"] = permissions
     return _json(data)
 
@@ -255,7 +255,9 @@ def plan_render(ws: Workspace, root: Path, fragments_dir: Path) -> dict[str, str
         "header": f"# Workspace: {ws.name}\n\n{ws.description}".rstrip()
         + "\n\n<!-- Rendered by `dev-standards workspace render` from workspace.yaml. "
         "Edit outside GENERATED regions only. -->",
-        "standards": compose_standards(fragments_dir, ws.standards.modules),
+        "standards": compose_standards(
+            fragments_dir, ws.standards.modules, ws.standards.base
+        ),
         "workspace-rules": workspace_rules(fragments_dir, ws),
         "repo-map": repo_map(ws),
     }

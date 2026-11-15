@@ -330,3 +330,45 @@ def test_local_settings_unrelated_keys_are_not_drift(render, fragments):
 
 def test_yaml_roundtrip_fixture_sanity(render):
     assert yaml.safe_load(render.yaml_path.read_text())["name"] == "test-ws"
+
+
+def test_ops_workspace_without_graph(render, make_yaml):
+    render(
+        make_yaml(
+            "ops.yaml",
+            graph=None,
+            mcp={"servers": []},
+            standards={"base": "ops", "modules": ["infra-ops"]},
+        )
+    )
+    root = render.root
+    text = (root / "AGENTS.md").read_text()
+    assert "# Claude Standards: Base Ops Conventions" in text
+    assert "# Claude Module: Infrastructure Operations" in text
+    assert "Base Python Conventions" not in text
+    rules = text.split("BEGIN GENERATED: workspace-rules")[1].split("END GENERATED")[0]
+    assert "## Graph access" not in rules
+    assert "{{" not in rules
+    assert "\n\n\n" not in rules
+    assert "## Session protocol" in rules
+    assert json.loads((root / ".mcp.json").read_text()) == {"mcpServers": {}}
+    settings = json.loads((root / ".claude/settings.json").read_text())
+    assert settings["permissions"]["deny"] == []
+
+
+def test_switching_base_rewrites_standards_region_only(render, make_yaml):
+    render()
+    agents = render.root / "AGENTS.md"
+    agents.write_text(
+        agents.read_text().replace("### Next Steps", "### Next Steps\n\nmine")
+    )
+    render(make_yaml("ops.yaml", standards={"base": "ops"}))
+    text = agents.read_text()
+    assert "Base Ops Conventions" in text and "Base Python Conventions" not in text
+    assert "## Graph access" in text  # graph still configured
+    assert "### Next Steps\n\nmine" in text
+
+
+def test_unknown_base_is_a_clear_error(render, make_yaml):
+    with pytest.raises(WorkspaceError, match="base 'nope'"):
+        render(make_yaml("x.yaml", standards={"base": "nope"}))
